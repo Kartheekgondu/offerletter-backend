@@ -35,9 +35,14 @@ public class OfferLetterController {
     }
 
     @GetMapping("/search-offers")
-    public ResponseEntity<Map<String,Object>> search(@RequestParam String name) {
-        if (name == null || name.trim().isEmpty()) throw new IllegalArgumentException("Search name is required");
-        return ResponseEntity.ok(service.search(name.trim()));
+    public ResponseEntity<Map<String,Object>> search(
+            @RequestParam(name = "q", required = false) String q,
+            @RequestParam(name = "name", required = false) String name) {
+        String term = (q != null ? q : name);
+        if (term == null || term.trim().isEmpty()) {
+            throw new IllegalArgumentException("Search query is required");
+        }
+        return ResponseEntity.ok(service.search(term.trim()));
     }
 
     @GetMapping("/health")
