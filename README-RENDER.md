@@ -4,20 +4,16 @@
 - Runtime: Docker
 - Dockerfile: `./Dockerfile`
 - Health Check Path: `/api/health`
-- Do not set a separate Start Command; the Dockerfile uses Render's `PORT`.
+- Do not set a separate Start Command; Dockerfile uses Render's dynamic `PORT`.
 
-Set these environment variables in Render:
-- `DB_URL` = your hosted MySQL JDBC URL, not localhost
-- `DB_USERNAME` = database username
-- `DB_PASSWORD` = database password
-- `APP_ALLOWED_ORIGINS` = exact Vercel origin, e.g. `https://your-project.vercel.app`
-- `APP_PUBLIC_BASE_URL` = actual Render public URL, e.g. `https://your-service.onrender.com`
-- `UPLOAD_DIR` = `/var/data/uploads` when a persistent disk is mounted at `/var/data`
-- `JPA_DDL_AUTO` = `update`
-- `MAIL_USERNAME` and `MAIL_PASSWORD` if email sending is required
+Environment variables:
+- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`: hosted MySQL credentials
+- `APP_ALLOWED_ORIGINS`: exact Offer Letter Vercel origin
+- `APP_PUBLIC_BASE_URL`: actual Offer Letter Render URL
+- `UPLOAD_DIR=/var/data/uploads` when a persistent disk is mounted at `/var/data`
+- `JPA_DDL_AUTO=update`
+- `MAIL_USERNAME`, `MAIL_PASSWORD`: only when email sending is enabled
 
-The service listens on `${PORT}` in Render and defaults to port 9091 only for local development.
-Do not set Render's port to 9091 manually.
-
-Attach a Render persistent disk at `/var/data` to keep saved PDFs through deploys/restarts.
-Without persistent storage, the database records may remain but uploaded PDFs can be lost.
+Render uses its assigned `PORT`; port 9091 is the local-development default only.
+The Vercel rewrite must point to this Offer Letter service, not the Appraisal service.
+Attach a persistent disk at `/var/data` to retain PDFs after redeploys.
