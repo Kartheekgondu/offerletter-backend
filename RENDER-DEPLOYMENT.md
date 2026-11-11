@@ -1,36 +1,47 @@
-# Offer Letter Backend — Render deployment fix
+# Offer Letter Backend — Render deployment
 
-## Why the current Render deployment fails
-The log shows Render runs `yarn` and then runs a start command literally equal to `0`.
-This is a Java Spring Boot project (`pom.xml`), not a Node/Yarn application. The service is
-configured with the wrong runtime/build/start commands (or the wrong Root Directory).
+## Project layout
+The Render service root must contain `pom.xml`, `Dockerfile`, and `src/`.
+In the uploaded repository layout, these files are inside `Sofferletter/offerletter/`.
+If that is also the layout in GitHub, set Render **Root Directory** to:
+`Sofferletter/offerletter`
 
-## Deploy with Render Docker runtime (recommended)
-1. Put the contents of this folder in the GitHub repository root, so `Dockerfile`, `pom.xml`
-   and `src/` are at the same level. Alternatively set Render Root Directory to the folder
-   that contains this Dockerfile and pom.xml.
-2. In Render create/edit a **Web Service**, select the repository and choose **Docker** runtime.
-3. Set Dockerfile Path to `./Dockerfile`. Do not use `yarn` as Build Command.
-4. Clear the old Start Command. Dockerfile supplies the start command; do not enter `0`.
-5. Add environment variables:
-   - `DB_URL` = `jdbc:mysql://<DB_HOST>:3306/<DB_NAME>?useSSL=true&allowPublicKeyRetrieval=true&serverTimezone=UTC`
-   - `DB_USERNAME` = database username
-   - `DB_PASSWORD` = database password
-   - `MAIL_USERNAME` = SMTP sender email
-   - `MAIL_PASSWORD` = SMTP app password (not normal account password)
-   - `APP_ALLOWED_ORIGINS` = `https://<your-frontend>.vercel.app`
-   - optionally `JPA_DDL_AUTO` = `update`
-6. Ensure the MySQL database accepts connections from Render. Use the provider's external/private
-   connection string as appropriate. Never use `localhost` for a separately hosted database.
-7. Deploy. Confirm logs show the Spring Boot application started and listening on Render's `$PORT`.
-8. In the frontend, set its API base URL to the Render service URL, then redeploy Vercel.
+## Render Web Service settings
+- Runtime: **Docker**
+- Dockerfile Path: `./Dockerfile`
+- Do not use Node, Yarn, or npm build commands.
+- Do not set a separate Start Command; the Dockerfile starts the Spring Boot JAR.
+- Ensure the Dockerfile is in the configured Root Directory.
 
-## Security
-The original application.properties contained database and Gmail credentials. Rotate those
-credentials immediately and only store replacements in Render environment variables.
-Do not commit secrets to GitHub.
+## Required environment variables
+Set these in Render → your Web Service → Environment:
 
-## Important
-This Dockerfile expects `pom.xml` and `src/` in the Render service root. If your GitHub repository
-has them inside `offerletter/`, set Render Root Directory to `offerletter` (or move the project
-contents to repository root). Keep the Dockerfile alongside pom.xml.
+- `DB_URL` = the complete JDBC URL supplied by your hosted MySQL provider.
+  Example format: `jdbc:mysql://HOST:3306/DATABASE?sslMode=REQUIRED`
+  Use the provider's actual URL and SSL options; do not use localhost on Render.
+- `DB_USERNAME` = MySQL username
+- `DB_PASSWORD` = newly rotated MySQL password
+- `APP_ALLOWED_ORIGINS` = `https://YOUR-VERCEL-FRONTEND.vercel.app`
+- `APP_PUBLIC_BASE_URL` = `https://YOUR-RENDER-SERVICE.onrender.com`
+- `APP_API_KEY` = optional shared API key; if set, the frontend must send it as `x-api-key`
+- `MAIL_USERNAME` = Gmail sender address (optional until email sending is used)
+- `MAIL_PASSWORD` = newly generated Gmail App Password (optional until email sending is used)
+- `JPA_DDL_AUTO` = `update` (suitable for development; use managed migrations for production)
+
+The application supports `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`,
+and `SPRING_DATASOURCE_PASSWORD` as aliases, but prefer the `DB_*` names above.
+
+## Deploy and verify
+1. Save the corrected files to GitHub.
+2. Confirm Render Root Directory points to the folder containing `pom.xml` and `Dockerfile`.
+3. Add the environment variables above. Do not paste secrets into source files or GitHub.
+4. Trigger **Manual Deploy → Clear build cache & deploy**.
+5. Check logs for `Started OfferLetterApplication`.
+6. Open `https://YOUR-RENDER-SERVICE.onrender.com/api/health`.
+
+A successful health response should include `status: UP` and `database: UP`.
+The health endpoint queries the database, so it verifies database connectivity too.
+
+## Important storage note
+Render's ordinary container filesystem is ephemeral. Uploaded PDFs can disappear after a redeploy/restart.
+Attach a Render persistent disk and set `UPLOAD_DIR` to its mount path, or move PDF storage to object storage.
