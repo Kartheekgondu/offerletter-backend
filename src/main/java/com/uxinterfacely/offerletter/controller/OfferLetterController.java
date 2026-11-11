@@ -38,11 +38,11 @@ public class OfferLetterController {
     public ResponseEntity<Map<String,Object>> search(
             @RequestParam(name = "q", required = false) String q,
             @RequestParam(name = "name", required = false) String name) {
-        String term = (q != null ? q : name);
-        if (term == null || term.trim().isEmpty()) {
-            throw new IllegalArgumentException("Search query is required");
+        String query = (q != null) ? q : name;
+        if (query == null || query.trim().isEmpty()) {
+            throw new IllegalArgumentException("Search name is required");
         }
-        return ResponseEntity.ok(service.search(term.trim()));
+        return ResponseEntity.ok(service.search(query.trim()));
     }
 
     @GetMapping("/health")

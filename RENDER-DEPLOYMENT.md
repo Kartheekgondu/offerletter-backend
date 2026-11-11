@@ -21,7 +21,7 @@ Set these in Render → your Web Service → Environment:
   Use the provider's actual URL and SSL options; do not use localhost on Render.
 - `DB_USERNAME` = MySQL username
 - `DB_PASSWORD` = newly rotated MySQL password
-- `APP_ALLOWED_ORIGINS` = `https://YOUR-VERCEL-FRONTEND.vercel.app` (add every production/preview origin that must call this API, comma-separated)
+- `APP_ALLOWED_ORIGINS` = `https://YOUR-VERCEL-FRONTEND.vercel.app`
 - `APP_PUBLIC_BASE_URL` = `https://YOUR-RENDER-SERVICE.onrender.com`
 - `APP_API_KEY` = optional shared API key; if set, the frontend must send it as `x-api-key`
 - `MAIL_USERNAME` = Gmail sender address (optional until email sending is used)
@@ -45,6 +45,3 @@ The health endpoint queries the database, so it verifies database connectivity t
 ## Important storage note
 Render's ordinary container filesystem is ephemeral. Uploaded PDFs can disappear after a redeploy/restart.
 Attach a Render persistent disk and set `UPLOAD_DIR` to its mount path, or move PDF storage to object storage.
-
-## Security note
-The original configuration archive contained hard-coded database and SMTP credentials. They have been removed from the corrected source defaults. Rotate those credentials immediately in the database provider and Gmail, then set the new values only in Render Environment. Do not commit `.env` files or credentials to GitHub.
