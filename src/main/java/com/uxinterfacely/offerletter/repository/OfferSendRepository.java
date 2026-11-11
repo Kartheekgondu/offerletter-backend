@@ -11,7 +11,7 @@ import java.util.List;
 
 @Repository
 public interface OfferSendRepository extends JpaRepository<OfferSend, Long> {
-    List<OfferSend> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    List<OfferSend> findAllByOrderByCreatedAtDesc();
 
     @Query("""
         SELECT o FROM OfferSend o

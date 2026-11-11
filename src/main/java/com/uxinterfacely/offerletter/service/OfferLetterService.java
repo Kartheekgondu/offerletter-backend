@@ -170,7 +170,8 @@ public class OfferLetterService {
         } catch (Exception ex) {
 
             throw new IllegalStateException(
-                    "Email could not be sent. Verify the mail configuration and try again.",
+                    "Email could not be sent. Check SMTP configuration: "
+                            + safeMessage(ex),
                     ex
             );
         }
@@ -201,9 +202,7 @@ public class OfferLetterService {
     public Map<String, Object> listRecent() {
 
         List<Map<String, Object>> results =
-                repository.findAllByOrderByCreatedAtDesc(PageRequest.of(
-                                0, 50, Sort.by(Sort.Direction.DESC, "createdAt")
-                        ))
+                repository.findAllByOrderByCreatedAtDesc()
                         .stream()
                         .map(this::summary)
                         .toList();
@@ -286,20 +285,27 @@ public class OfferLetterService {
     // ==========================================
 
     private Map<String, Object> summary(OfferSend o) {
-        // Stable camelCase response contract shared by the React application.
+
         Map<String, Object> row = new LinkedHashMap<>();
+
         row.put("id", o.getId());
-        row.put("candidateName", o.getCandidateName());
-        row.put("jobTitle", o.getJobTitle());
-        row.put("recipientEmail", o.getRecipientEmail());
+        row.put("candidate_name", o.getCandidateName());
+        row.put("job_title", o.getJobTitle());
+        row.put("recipient_email", o.getRecipientEmail());
         row.put("department", o.getDepartment());
-        row.put("workLocation", o.getWorkLocation());
+        row.put("work_location", o.getWorkLocation());
         row.put("status", o.getStatus());
-        row.put("dateOfJoining", o.getDateOfJoining() == null ? null : o.getDateOfJoining().toString());
-        row.put("letterDate", o.getLetterDate() == null ? null : o.getLetterDate().toString());
-        row.put("annualCtc", o.getAnnualCtc());
-        row.put("pdfUrl", o.getPdfUrl());
-        row.put("createdAt", o.getCreatedAt());
+
+        row.put(
+                "date_of_joining",
+                o.getDateOfJoining() == null
+                        ? null
+                        : o.getDateOfJoining().toString()
+        );
+
+        row.put("pdf_url", o.getPdfUrl());
+        row.put("created_at", o.getCreatedAt());
+
         return row;
     }
 

@@ -20,7 +20,7 @@ public class FileStorageService {
         String type = file.getContentType();
         if (type != null && !type.equalsIgnoreCase("application/pdf") && !type.equalsIgnoreCase("application/octet-stream"))
             throw new IllegalArgumentException("Only PDF files are accepted");
-        if (file.getSize() > 25L * 1024 * 1024) throw new IllegalArgumentException("PDF must be 25 MB or smaller");
+        if (file.getSize() > 15L * 1024 * 1024) throw new IllegalArgumentException("PDF must be 15 MB or smaller");
         String original = StringUtils.cleanPath(file.getOriginalFilename() == null ? "offer-letter.pdf" : file.getOriginalFilename());
         String safe = original.replaceAll("[^A-Za-z0-9._-]", "_");
         String name = UUID.randomUUID() + "-" + safe;

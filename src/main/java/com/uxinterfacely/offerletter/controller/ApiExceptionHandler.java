@@ -26,7 +26,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, String>> tooLarge(MaxUploadSizeExceededException ex) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(Map.of("error", "PDF exceeds the 25 MB upload limit. The hosting proxy must also allow requests up to 27 MB."));
+                .body(Map.of("error", "PDF exceeds the maximum upload size"));
     }
 
     @ExceptionHandler(Exception.class)
