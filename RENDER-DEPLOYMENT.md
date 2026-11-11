@@ -1,47 +1,29 @@
-# Offer Letter Backend — Render deployment
+# Offer Letter backend — Render deployment
 
-## Project layout
-The Render service root must contain `pom.xml`, `Dockerfile`, and `src/`.
-In the uploaded repository layout, these files are inside `Sofferletter/offerletter/`.
-If that is also the layout in GitHub, set Render **Root Directory** to:
-`Sofferletter/offerletter`
-
-## Render Web Service settings
-- Runtime: **Docker**
+## Render service settings
+- Runtime: Docker
+- Root Directory: `backend` (or the directory containing this backend's `pom.xml` and `Dockerfile`)
 - Dockerfile Path: `./Dockerfile`
-- Do not use Node, Yarn, or npm build commands.
-- Do not set a separate Start Command; the Dockerfile starts the Spring Boot JAR.
-- Ensure the Dockerfile is in the configured Root Directory.
+- Leave Start Command empty; the Dockerfile starts Spring Boot.
 
-## Required environment variables
-Set these in Render → your Web Service → Environment:
+## Required Render environment
+- `DB_URL`: hosted MySQL JDBC URL (`jdbc:mysql://HOST:3306/DB?sslMode=REQUIRED`)
+- `DB_USERNAME`: database username
+- `DB_PASSWORD`: newly rotated database password
+- `APP_ALLOWED_ORIGINS`: exact Vercel origin, e.g. `https://YOUR-PROJECT.vercel.app`. For multiple domains, comma-separate the exact origins.
+- `APP_PUBLIC_BASE_URL`: `https://YOUR-RENDER-SERVICE.onrender.com`
+- `UPLOAD_DIR`: `/var/data/uploads` if you attach a Render persistent disk at `/var/data`; otherwise use `uploads` (files may be lost on restart/redeploy).
+- `JPA_DDL_AUTO`: `update` for this existing schema setup.
+- `MAIL_USERNAME` and `MAIL_PASSWORD`: optional; configure a Gmail App Password if email sending is required.
+- `APP_API_KEY`: optional; leave unset unless you intentionally use API-key protection.
 
-- `DB_URL` = the complete JDBC URL supplied by your hosted MySQL provider.
-  Example format: `jdbc:mysql://HOST:3306/DATABASE?sslMode=REQUIRED`
-  Use the provider's actual URL and SSL options; do not use localhost on Render.
-- `DB_USERNAME` = MySQL username
-- `DB_PASSWORD` = newly rotated MySQL password
-- `APP_ALLOWED_ORIGINS` = `https://YOUR-VERCEL-FRONTEND.vercel.app`
-- `APP_PUBLIC_BASE_URL` = `https://YOUR-RENDER-SERVICE.onrender.com`
-- `APP_API_KEY` = optional shared API key; if set, the frontend must send it as `x-api-key`
-- `MAIL_USERNAME` = Gmail sender address (optional until email sending is used)
-- `MAIL_PASSWORD` = newly generated Gmail App Password (optional until email sending is used)
-- `JPA_DDL_AUTO` = `update` (suitable for development; use managed migrations for production)
+## Deploy and test
+1. In Render, confirm the root directory contains `pom.xml` and `Dockerfile`.
+2. Add the environment variables above using your real provider values. Never commit credentials.
+3. Deploy and wait for `Started OfferLetterApplication`.
+4. Open `https://YOUR-RENDER-SERVICE.onrender.com/api/health`. It should report the service and database as UP.
+5. In Vercel, set `VITE_API_BASE` to the Render URL with no `/api` suffix, then redeploy the frontend.
+6. Test save, search, and email from the deployed Vercel website.
 
-The application supports `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`,
-and `SPRING_DATASOURCE_PASSWORD` as aliases, but prefer the `DB_*` names above.
-
-## Deploy and verify
-1. Save the corrected files to GitHub.
-2. Confirm Render Root Directory points to the folder containing `pom.xml` and `Dockerfile`.
-3. Add the environment variables above. Do not paste secrets into source files or GitHub.
-4. Trigger **Manual Deploy → Clear build cache & deploy**.
-5. Check logs for `Started OfferLetterApplication`.
-6. Open `https://YOUR-RENDER-SERVICE.onrender.com/api/health`.
-
-A successful health response should include `status: UP` and `database: UP`.
-The health endpoint queries the database, so it verifies database connectivity too.
-
-## Important storage note
-Render's ordinary container filesystem is ephemeral. Uploaded PDFs can disappear after a redeploy/restart.
-Attach a Render persistent disk and set `UPLOAD_DIR` to its mount path, or move PDF storage to object storage.
+## Important
+The backend accepts PDFs up to 15 MB. Render's local filesystem is ephemeral unless a persistent disk is mounted. This ZIP does not contain your database credentials; supply them through Render environment variables.
