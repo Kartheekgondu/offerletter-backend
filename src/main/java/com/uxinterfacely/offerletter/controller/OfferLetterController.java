@@ -35,7 +35,7 @@ public class OfferLetterController {
     }
 
     @GetMapping("/search-offers")
-    public ResponseEntity<Map<String,Object>> search(@RequestParam String name) {
+    public ResponseEntity<Map<String,Object>> search(@RequestParam(name = "name") String name) {
         if (name == null || name.trim().isEmpty()) throw new IllegalArgumentException("Search name is required");
         return ResponseEntity.ok(service.search(name.trim()));
     }
