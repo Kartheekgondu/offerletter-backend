@@ -1,41 +1,24 @@
-# Render deployment (backend)
+# Offer Letter backend deployment (Render)
 
-## Render service settings
-- Runtime: Docker.
-- Root Directory: `offerletter` (the folder containing `pom.xml` and `Dockerfile` in this repository).
-- Dockerfile Path: `Dockerfile` relative to the Root Directory.
-- Health Check Path: `/api/health`.
-- Set the environment variables below in Render -> your service -> Environment.
+## Email configuration
 
-## Required environment variables
-Copy the variable names from `.env.example` and supply your own values:
-- `DB_URL`
-- `DB_USERNAME`
-- `DB_PASSWORD`
-- `APP_ALLOWED_ORIGINS=https://offerletter-frontend.vercel.app`
-- `APP_PUBLIC_BASE_URL=https://offerletter-backend-316h.onrender.com`
+This backend sends offer-letter emails through the Resend HTTPS API, not Gmail SMTP.
+Render Free web services block outbound SMTP ports 25, 465, and 587.
 
-For PDF persistence, attach a Render persistent disk mounted at `/var/data` and set
-`UPLOAD_DIR=/var/data/uploads`. Without a persistent disk, files written to the container
-filesystem may be lost on redeploy/restart.
+1. Create an account at https://resend.com/.
+2. Verify a domain you own in Resend.
+3. Create an API key.
+4. In Render -> backend service -> Environment, set:
+   - `RESEND_API_KEY`: your Resend API key
+   - `RESEND_FROM_EMAIL`: a sender address on your verified domain, e.g. `Offer Letters <offers@yourdomain.com>`
+5. Keep the database and other required environment variables configured.
+6. Deploy the backend from the `main` branch.
 
-Optional:
-- `MAIL_USERNAME` and `MAIL_PASSWORD` for SMTP email.
-- `APP_API_KEY` to enable API-key authentication. If configured, set the exact same value
-  as `VITE_API_KEY` in Vercel. Leave both empty to disable API-key authentication.
+## Other settings
 
-## Deploy and verify
-1. Push the backend changes to the Git repository connected to Render.
-2. Confirm the Root Directory and Dockerfile settings above.
-3. Add the environment variables and deploy.
-4. Open `https://offerletter-backend-316h.onrender.com/api/health`.
-5. The health endpoint should return a successful JSON response.
+- Frontend origin: `https://offerletter-frontend.vercel.app`
+- Backend URL: `https://offerletter-backend-316h.onrender.com`
+- Health check: `/api/health`
+- Optional persistent disk mount: `/var/data`; set `UPLOAD_DIR=/var/data/uploads`.
 
-## Frontend connection
-The Vercel frontend at `https://offerletter-frontend.vercel.app/` calls
-`https://offerletter-backend-316h.onrender.com` directly in production. The frontend's
-`vercel.json` also contains a `/backend/*` rewrite to this same Render service for
-proxy-based requests.
-
-Ensure the Render CORS allowlist contains the exact Vercel origin:
-`https://offerletter-frontend.vercel.app` (no trailing slash).
+Never commit API keys, database passwords, or other secrets. Rotate credentials previously committed or shared.

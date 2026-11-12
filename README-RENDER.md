@@ -1,19 +1,24 @@
-# Offer Letter backend on Render
+# Offer Letter backend deployment (Render)
 
-- Root Directory: `backend`
-- Runtime: Docker
-- Dockerfile: `./Dockerfile`
-- Health Check Path: `/api/health`
-- Do not set a separate Start Command; Dockerfile uses Render's dynamic `PORT`.
+## Email configuration
 
-Environment variables:
-- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`: hosted MySQL credentials
-- `APP_ALLOWED_ORIGINS`: exact Offer Letter Vercel origin
-- `APP_PUBLIC_BASE_URL`: actual Offer Letter Render URL
-- `UPLOAD_DIR=/var/data/uploads` when a persistent disk is mounted at `/var/data`
-- `JPA_DDL_AUTO=update`
-- `MAIL_USERNAME`, `MAIL_PASSWORD`: only when email sending is enabled
+This backend sends offer-letter emails through the Resend HTTPS API, not Gmail SMTP.
+Render Free web services block outbound SMTP ports 25, 465, and 587.
 
-Render uses its assigned `PORT`; port 9091 is the local-development default only.
-The Vercel rewrite must point to this Offer Letter service, not the Appraisal service.
-Attach a persistent disk at `/var/data` to retain PDFs after redeploys.
+1. Create an account at https://resend.com/.
+2. Verify a domain you own in Resend.
+3. Create an API key.
+4. In Render -> backend service -> Environment, set:
+   - `RESEND_API_KEY`: your Resend API key
+   - `RESEND_FROM_EMAIL`: a sender address on your verified domain, e.g. `Offer Letters <offers@yourdomain.com>`
+5. Keep the database and other required environment variables configured.
+6. Deploy the backend from the `main` branch.
+
+## Other settings
+
+- Frontend origin: `https://offerletter-frontend.vercel.app`
+- Backend URL: `https://offerletter-backend-316h.onrender.com`
+- Health check: `/api/health`
+- Optional persistent disk mount: `/var/data`; set `UPLOAD_DIR=/var/data/uploads`.
+
+Never commit API keys, database passwords, or other secrets. Rotate credentials previously committed or shared.
