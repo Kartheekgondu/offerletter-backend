@@ -4,21 +4,13 @@ package com.uxinterfacely.offerletter.service;
 import com.uxinterfacely.offerletter.model.OfferSend;
 import com.uxinterfacely.offerletter.repository.OfferSendRepository;
 
-import org.springframework.beans.factory.annotation.Value;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -27,22 +19,18 @@ public class OfferLetterService {
 
     private final OfferSendRepository repository;
     private final FileStorageService storage;
-    private final JavaMailSender mailSender;
-
+    private final OfferLetterEmailService emailService;
     @Value("${app.public-base-url:http://localhost:9091}")
     private String publicBaseUrl;
-
-    @Value("${app.upload-dir:uploads}")
-    private String uploadDir;
 
     public OfferLetterService(
             OfferSendRepository repository,
             FileStorageService storage,
-            JavaMailSender mailSender) {
+            OfferLetterEmailService emailService) {
 
         this.repository = repository;
         this.storage = storage;
-        this.mailSender = mailSender;
+        this.emailService = emailService;
     }
 
 
@@ -91,12 +79,11 @@ public class OfferLetterService {
 
 
     // ==========================================
-    // SEND OFFER LETTER EMAIL
-    // ==========================================
+    // SEND OFFER LETTER EMAIL (same SMTP flow as Appraisal)
 
     public Map<String, Object> send(
             Map<String, String> f,
-            MultipartFile pdf) throws Exception {
+            MultipartFile pdf) {
 
         String recipient = required(f, "recipient");
         String candidate = value(f, "candidateName", "Candidate");
@@ -104,48 +91,18 @@ public class OfferLetterService {
         String location = value(f, "workLocation", "");
         String doj = value(f, "dojDisplay", "");
 
-        if (pdf == null || pdf.isEmpty()) {
-            throw new IllegalArgumentException("Offer letter PDF attachment is missing");
-        }
+        emailService.sendOfferLetter(
+                recipient, candidate, role, location, doj, pdf
+        );
 
-        // Keep a server-side copy using the existing Offer Letter storage workflow.
-        storage.store(pdf);
-
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setTo(recipient);
-            helper.setSubject("Offer Letter - " + candidate);
-            helper.setText(
-                    "Dear " + candidate + ",\n\n" +
-                    "Please find attached your offer letter for " + role +
-                    (location.isBlank() ? "" : " at " + location) +
-                    (doj.isBlank() ? "" : ". Date of joining: " + doj) +
-                    ".\n\nRegards,\nHR Department\nUXINTERFACELY IT SOLUTIONS LLP"
-            );
-
-            String safeCandidate = candidate.replaceAll("[^A-Za-z0-9_-]", "_");
-            helper.addAttachment(
-                    safeCandidate + "_Offer_Letter.pdf",
-                    new ByteArrayResource(pdf.getBytes()),
-                    "application/pdf"
-            );
-
-            mailSender.send(message);
-
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("success", true);
-            result.put("message", "Offer letter email sent successfully");
-            return result;
-        } catch (MessagingException | MailException exception) {
-            throw new IllegalStateException(
-                    "Unable to send offer letter email. Check SMTP settings and Render SMTP connectivity.",
-                    exception
-            );
-        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", true);
+        result.put("message", "Offer letter email sent successfully to " + recipient);
+        result.put("recipient", recipient);
+        return result;
     }
 
-    // ==========================================
+
     // BACKEND HEALTH CHECK
     // ==========================================
 
