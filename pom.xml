@@ -51,6 +51,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- SMTP email delivery with PDF attachments (same as working Appraisal backend) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Spring Boot Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

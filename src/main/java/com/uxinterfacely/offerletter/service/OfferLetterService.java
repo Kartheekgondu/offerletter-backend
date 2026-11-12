@@ -5,12 +5,12 @@ import com.uxinterfacely.offerletter.model.OfferSend;
 import com.uxinterfacely.offerletter.repository.OfferSendRepository;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
-
-import java.nio.file.Files;
-import java.util.Base64;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.mail.MailException;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -27,13 +27,7 @@ public class OfferLetterService {
 
     private final OfferSendRepository repository;
     private final FileStorageService storage;
-    private final RestClient resendClient = RestClient.create("https://api.resend.com");
-
-    @Value("${app.resend.api-key:}")
-    private String resendApiKey;
-
-    @Value("${app.resend.from:}")
-    private String resendFrom;
+    private final JavaMailSender mailSender;
 
     @Value("${app.public-base-url:http://localhost:9091}")
     private String publicBaseUrl;
@@ -43,10 +37,12 @@ public class OfferLetterService {
 
     public OfferLetterService(
             OfferSendRepository repository,
-            FileStorageService storage) {
+            FileStorageService storage,
+            JavaMailSender mailSender) {
 
         this.repository = repository;
         this.storage = storage;
+        this.mailSender = mailSender;
     }
 
 
@@ -111,62 +107,43 @@ public class OfferLetterService {
         if (pdf == null || pdf.isEmpty()) {
             throw new IllegalArgumentException("Offer letter PDF attachment is missing");
         }
-        if (resendApiKey == null || resendApiKey.isBlank()) {
-            throw new IllegalStateException("Email is not configured: set RESEND_API_KEY in Render.");
-        }
-        if (resendFrom == null || resendFrom.isBlank()) {
-            throw new IllegalStateException("Email sender is not configured: set RESEND_FROM_EMAIL in Render.");
-        }
 
-        // Appraisal-style personalized email body with the generated PDF attached.
-        String stored = storage.store(pdf);
-        Path pdfFile = Paths.get(uploadDir).toAbsolutePath().normalize()
-                .resolve(Paths.get(stored).getFileName()).normalize();
-
-        String safeCandidate = candidate.replaceAll("[^A-Za-z0-9_-]", "_");
-        String emailText = "Dear " + candidate + ",\\n\\n"
-                + "Please find attached your offer letter for " + role
-                + (location.isBlank() ? "" : " at " + location)
-                + (doj.isBlank() ? "" : ". Date of joining: " + doj)
-                + ".\\n\\nRegards,\\nHR Department\\nUXINTERFACELY IT SOLUTIONS LLP";
-
-        Map<String, Object> attachment = new LinkedHashMap<>();
-        attachment.put("filename", safeCandidate + "_Offer_Letter.pdf");
-        attachment.put("content", Base64.getEncoder().encodeToString(Files.readAllBytes(pdfFile)));
-        attachment.put("content_type", "application/pdf");
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("from", resendFrom);
-        payload.put("to", List.of(recipient));
-        payload.put("subject", "Offer Letter - " + candidate);
-        payload.put("text", emailText);
-        payload.put("attachments", List.of(attachment));
+        // Keep a server-side copy using the existing Offer Letter storage workflow.
+        storage.store(pdf);
 
         try {
-            Map response = resendClient.post()
-                    .uri("/emails")
-                    .header("Authorization", "Bearer " + resendApiKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(payload)
-                    .retrieve()
-                    .body(Map.class);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setTo(recipient);
+            helper.setSubject("Offer Letter - " + candidate);
+            helper.setText(
+                    "Dear " + candidate + ",\n\n" +
+                    "Please find attached your offer letter for " + role +
+                    (location.isBlank() ? "" : " at " + location) +
+                    (doj.isBlank() ? "" : ". Date of joining: " + doj) +
+                    ".\n\nRegards,\nHR Department\nUXINTERFACELY IT SOLUTIONS LLP"
+            );
+
+            String safeCandidate = candidate.replaceAll("[^A-Za-z0-9_-]", "_");
+            helper.addAttachment(
+                    safeCandidate + "_Offer_Letter.pdf",
+                    new ByteArrayResource(pdf.getBytes()),
+                    "application/pdf"
+            );
+
+            mailSender.send(message);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("success", true);
             result.put("message", "Offer letter email sent successfully");
-            if (response != null && response.get("id") != null) {
-                result.put("emailId", String.valueOf(response.get("id")));
-            }
             return result;
-        } catch (RestClientResponseException ex) {
-            throw new IllegalStateException("Email provider returned HTTP "
-                    + ex.getStatusCode().value() + ": " + safeMessage(ex), ex);
-        } catch (Exception ex) {
-            throw new IllegalStateException("Unable to send offer letter email through Resend: "
-                    + safeMessage(ex), ex);
+        } catch (MessagingException | MailException exception) {
+            throw new IllegalStateException(
+                    "Unable to send offer letter email. Check SMTP settings and Render SMTP connectivity.",
+                    exception
+            );
         }
     }
-
 
     // ==========================================
     // BACKEND HEALTH CHECK
