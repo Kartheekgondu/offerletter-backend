@@ -1,28 +1,47 @@
-# Offer Letter email setup (Gmail SMTP)
+# Offer Letter email setup
 
-The frontend sends the generated PDF to `POST /api/send-offer`. The backend uses Spring Boot `JavaMailSender`, following the Appraisal project pattern. The PDF is attached directly to the email; the frontend does not download it or open `mailto:`.
+The React frontend creates the current offer-letter PDF and posts it to
+`POST /api/send-offer`. The Spring Boot backend sends the PDF as an attachment
+using Gmail SMTP. The `Send Mail` button does not open an email application.
 
-## Render backend environment variables
+## Required backend environment variables
 
-Set these on the backend service in Render -> Environment:
+Configure these on the backend hosting provider (Render -> service -> Environment):
 
 - `SMTP_HOST=smtp.gmail.com`
 - `SMTP_PORT=587`
 - `SMTP_USERNAME=your-company-gmail@gmail.com`
 - `SMTP_PASSWORD=your-16-character-google-app-password`
+- `APP_ALLOWED_ORIGINS=https://offerletter-frontend.vercel.app`
 
-There is no `RESEND_API_KEY` or `RESEND_FROM_EMAIL`.
+For Gmail, enable 2-Step Verification and create a Google App Password.
+Use the 16-character App Password, not the normal Gmail password. The sender
+address is `SMTP_USERNAME`. Never commit credentials to GitHub or put them in
+Vercel. The application properties intentionally contain no default credentials.
 
-For Gmail, enable 2-Step Verification and create a Google App Password. Use the 16-character App Password as `SMTP_PASSWORD`, not your normal Gmail password. The sender address is taken from `SMTP_USERNAME`. Keep credentials only in Render; never commit them to GitHub or put them in Vercel.
+## Hosting limitation
 
-## Important Render Free limitation
+Render Free web services block outbound SMTP ports 25, 465, and 587. Therefore
+this SMTP implementation will not deliver mail from a Render Free instance.
+Use a paid Render instance or a hosting provider that permits outbound SMTP.
+If the backend must remain on Render Free, replace SMTP with an HTTPS email
+provider API (for example, Resend) and configure a verified sender domain.
 
-Render announced that free web services block outbound SMTP ports 25, 465, and 587. Therefore this Gmail SMTP implementation will time out on a Render Free web service. To use this exact SMTP implementation on Render, upgrade the backend to a paid instance. Alternatively, host the backend somewhere that permits outbound SMTP. If you must remain on Render Free, an HTTPS mail API or Gmail API OAuth integration is required instead of SMTP.
+## Frontend configuration
 
-## Test
+The frontend defaults to the existing backend URL in `src/lib/api.js`.
+If your actual Render backend URL differs, set `VITE_API_BASE_URL` in Vercel
+(Project -> Settings -> Environment Variables) to the correct backend base URL,
+then redeploy the frontend. If API-key authentication is enabled, set the same
+`VITE_API_KEY` value in Vercel as `APP_API_KEY` on the backend.
 
-1. Configure SMTP variables on Render.
-2. Confirm the backend is running and redeploy it.
-3. Deploy the updated frontend to Vercel.
-4. Generate an offer letter, enter any valid recipient address, and click Email Offer Letter.
-5. Confirm the recipient receives the email with the offer-letter PDF attached.
+## Verify
+
+1. Set the four SMTP variables on the backend.
+2. Ensure the backend hosting plan permits outbound SMTP.
+3. Redeploy/restart the backend.
+4. Deploy the updated frontend to Vercel.
+5. Generate an offer letter, enter a recipient email address, and click `Send Mail`.
+6. Confirm the recipient receives the PDF attachment. The UI reports an error if
+   the backend rejects the request; a success message is shown only after SMTP
+   accepts the message.

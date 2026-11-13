@@ -23,3 +23,8 @@ Create a Google App Password after enabling 2-Step Verification. Do not use your
 - Optional persistent disk mount: `/var/data`; set `UPLOAD_DIR=/var/data/uploads`.
 
 Never commit API keys, SMTP passwords, database passwords, or other secrets. Rotate any credentials that were exposed in uploaded archives or Git history.
+
+
+## Email delivery note
+
+The frontend `Send Mail` button posts the generated PDF to `/api/send-offer`; the backend sends it using Gmail SMTP. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` on the backend host. Render Free blocks outbound SMTP, so use a paid instance or an HTTPS email API provider. See `EMAIL-SETUP.md`.
