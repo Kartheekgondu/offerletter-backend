@@ -5,27 +5,19 @@ import com.uxinterfacely.offerletter.model.OfferSend;
 import com.uxinterfacely.offerletter.repository.OfferSendRepository;
 
 import org.springframework.beans.factory.annotation.Value;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.AddressException;
-import jakarta.mail.internet.MimeMessage;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -34,23 +26,14 @@ public class OfferLetterService {
 
     private final OfferSendRepository repository;
     private final FileStorageService storage;
-    private final JavaMailSender mailSender;
+    @Value("${app.email.resend-api-key:}")
+    private String resendApiKey;
 
-    @Value("${spring.mail.username:}")
-    private String smtpUsername;
+    @Value("${app.email.from:}")
+    private String emailFrom;
 
-    // Brevo HTTP API (port 443). Render free tier blocks SMTP ports 25/465/587,
-    // so when BREVO_API_KEY is set we send over HTTPS instead of Gmail SMTP.
-    @Value("${app.brevo.api-key:}")
-    private String brevoApiKey;
-
-    @Value("${app.brevo.sender-email:}")
-    private String brevoSenderEmail;
-
-    @Value("${app.brevo.sender-name:UXINTERFACELY HR}")
-    private String brevoSenderName;
-
-    private final ObjectMapper json = new ObjectMapper();
+    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${app.public-base-url:http://localhost:9091}")
     private String publicBaseUrl;
@@ -58,12 +41,10 @@ public class OfferLetterService {
 
     public OfferLetterService(
             OfferSendRepository repository,
-            FileStorageService storage,
-            JavaMailSender mailSender) {
+            FileStorageService storage) {
 
         this.repository = repository;
         this.storage = storage;
-        this.mailSender = mailSender;
     }
 
 
@@ -112,7 +93,7 @@ public class OfferLetterService {
 
 
     // ==========================================
-    // SEND OFFER LETTER EMAIL (Spring JavaMailSender)
+    // SEND OFFER LETTER EMAIL (Resend HTTPS API)
     // ==========================================
 
     public Map<String, Object> send(
@@ -120,10 +101,7 @@ public class OfferLetterService {
             MultipartFile pdf) throws Exception {
 
         String recipient = required(f, "recipient");
-        try {
-            InternetAddress address = new InternetAddress(recipient);
-            address.validate();
-        } catch (AddressException ex) {
+        if (!recipient.matches("^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$")) {
             throw new IllegalArgumentException("Enter a valid recipient email address.");
         }
 
@@ -145,11 +123,13 @@ public class OfferLetterService {
             throw new IllegalArgumentException("The attachment is not a valid PDF. Generate the offer letter again.");
         }
 
-        boolean useBrevo = brevoApiKey != null && !brevoApiKey.isBlank();
-
-        if (!useBrevo && (smtpUsername == null || smtpUsername.isBlank())) {
+        if (resendApiKey == null || resendApiKey.isBlank()) {
             throw new IllegalStateException(
-                    "Email sender is not configured. Set BREVO_API_KEY (recommended on Render) or SMTP_USERNAME.");
+                    "Email service is not configured. Set RESEND_API_KEY in the backend environment.");
+        }
+        if (emailFrom == null || emailFrom.isBlank()) {
+            throw new IllegalStateException(
+                    "Email sender is not configured. Set RESEND_FROM_EMAIL to an address on your verified Resend domain.");
         }
 
         String safeCandidate = candidate.replaceAll("[^A-Za-z0-9_-]", "_");
@@ -159,97 +139,54 @@ public class OfferLetterService {
                 + (doj.isBlank() ? "" : ". Date of joining: " + doj)
                 + ".\n\nRegards,\nHR Department\nUXINTERFACELY IT SOLUTIONS LLP";
 
-        if (useBrevo) {
-            sendViaBrevo(recipient, candidate, "Offer Letter - " + candidate, emailText,
-                    safeCandidate + "_Offer_Letter.pdf", pdfBytes);
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("success", true);
-            result.put("message", "Offer letter email sent successfully.");
-            result.put("recipient", recipient);
-            return result;
-        }
-
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(smtpUsername.trim());
-            helper.setTo(recipient);
-            helper.setSubject("Offer Letter - " + candidate);
-            helper.setText(emailText, false);
-            helper.addAttachment(
-                    safeCandidate + "_Offer_Letter.pdf",
-                    new ByteArrayResource(pdfBytes),
-                    "application/pdf"
-            );
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("from", emailFrom.trim());
+            payload.put("to", List.of(recipient));
+            payload.put("subject", "Offer Letter - " + candidate);
+            payload.put("text", emailText);
 
-            mailSender.send(message);
+            Map<String, Object> attachment = new LinkedHashMap<>();
+            attachment.put("filename", safeCandidate + "_Offer_Letter.pdf");
+            attachment.put("content", Base64.getEncoder().encodeToString(pdfBytes));
+            payload.put("attachments", List.of(attachment));
 
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("success", true);
-            result.put("message", "Offer letter email sent successfully.");
-            result.put("recipient", recipient);
-            return result;
-
-        } catch (MailException | MessagingException ex) {
-            throw new IllegalStateException(
-                    "Unable to send offer letter email. Check Gmail SMTP settings and app password. "
-                            + safeMessage(ex), ex);
-        }
-    }
-
-
-    // ==========================================
-    // SEND VIA BREVO HTTPS API (works on Render free tier)
-    // ==========================================
-
-    private void sendViaBrevo(String recipient, String recipientName, String subject,
-                              String text, String fileName, byte[] pdfBytes) {
-        String senderEmail = (brevoSenderEmail == null || brevoSenderEmail.isBlank())
-                ? smtpUsername : brevoSenderEmail;
-        if (senderEmail == null || senderEmail.isBlank()) {
-            throw new IllegalStateException(
-                    "Set BREVO_SENDER_EMAIL to the sender address verified in Brevo.");
-        }
-        try {
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("sender", Map.of("name", brevoSenderName, "email", senderEmail.trim()));
-            body.put("to", List.of(Map.of("email", recipient, "name", recipientName)));
-            body.put("subject", subject);
-            body.put("textContent", text);
-            body.put("attachment", List.of(Map.of(
-                    "name", fileName,
-                    "content", Base64.getEncoder().encodeToString(pdfBytes))));
-
+            String json = objectMapper.writeValueAsString(payload);
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
-                    .timeout(Duration.ofSeconds(60))
-                    .header("api-key", brevoApiKey.trim())
+                    .uri(URI.create("https://api.resend.com/emails"))
+                    .header("Authorization", "Bearer " + resendApiKey.trim())
                     .header("Content-Type", "application/json")
-                    .header("accept", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
+                    .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                     .build();
 
-            HttpResponse<String> response = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(15))
-                    .build()
-                    .send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(
+                    request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                String b = response.body() == null ? "" : response.body();
-                throw new IllegalStateException(
-                        "Brevo rejected the email (HTTP " + response.statusCode() + "): "
-                                + b.substring(0, Math.min(b.length(), 300)));
+                String detail = response.body() == null ? "" : response.body();
+                throw new IllegalStateException("Email provider rejected the message (HTTP "
+                        + response.statusCode() + "): "
+                        + detail.substring(0, Math.min(detail.length(), 500)));
             }
-        } catch (IllegalStateException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            throw new IllegalStateException(
-                    "Unable to send offer letter email via Brevo. " + safeMessage(ex), ex);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("message", "Offer letter email accepted by the email provider.");
+            result.put("recipient", recipient);
+            result.put("provider", "Resend");
+            return result;
+
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Email sending was interrupted. Please retry.", ex);
+        } catch (java.io.IOException ex) {
+            throw new IllegalStateException("Could not reach the email provider API: " + safeMessage(ex), ex);
         }
+
     }
 
 
-    // ==========================================
+        // ==========================================
     // BACKEND HEALTH CHECK
     // ==========================================
 

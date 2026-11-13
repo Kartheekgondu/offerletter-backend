@@ -1,47 +1,43 @@
-# Offer Letter email setup
+# Offer Letter email setup (Resend HTTPS API)
 
-The React frontend creates the current offer-letter PDF and posts it to
-`POST /api/send-offer`. The Spring Boot backend sends the PDF as an attachment
-using Gmail SMTP. The `Send Mail` button does not open an email application.
+The frontend posts the generated offer-letter PDF to `POST /api/send-offer`.
+The backend sends it as an attachment through Resend's HTTPS API. This avoids
+SMTP ports, which are blocked on Render Free.
 
-## Required backend environment variables
+## 1. Configure Resend
 
-Configure these on the backend hosting provider (Render -> service -> Environment):
+1. Create an account at https://resend.com/.
+2. Add and verify a domain you control in Resend. Publish the DNS records Resend provides.
+3. Create a Resend API key.
+4. Set a sender address on that verified domain, e.g. `Offer Letters <offers@yourdomain.com>`.
 
-- `SMTP_HOST=smtp.gmail.com`
-- `SMTP_PORT=587`
-- `SMTP_USERNAME=your-company-gmail@gmail.com`
-- `SMTP_PASSWORD=your-16-character-google-app-password`
-- `APP_ALLOWED_ORIGINS=https://offerletter-frontend.vercel.app`
+A verified sender domain is required to send to arbitrary recipients. Do not use
+a sender address you do not control.
 
-For Gmail, enable 2-Step Verification and create a Google App Password.
-Use the 16-character App Password, not the normal Gmail password. The sender
-address is `SMTP_USERNAME`. Never commit credentials to GitHub or put them in
-Vercel. The application properties intentionally contain no default credentials.
+## 2. Configure Render backend environment
 
-## Hosting limitation
+In Render -> backend service -> Environment, add:
 
-Render Free web services block outbound SMTP ports 25, 465, and 587. Therefore
-this SMTP implementation will not deliver mail from a Render Free instance.
-Use a paid Render instance or a hosting provider that permits outbound SMTP.
-If the backend must remain on Render Free, replace SMTP with an HTTPS email
-provider API (for example, Resend) and configure a verified sender domain.
+- `RESEND_API_KEY` = your Resend API key
+- `RESEND_FROM_EMAIL` = `Offer Letters <offers@yourdomain.com>`
+- `APP_ALLOWED_ORIGINS` = `https://offerletter-frontend.vercel.app`
+- `APP_PUBLIC_BASE_URL` = your actual Render backend URL
+- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` = your database connection values
 
-## Frontend configuration
+Never put the Resend API key in Vercel or frontend code. Never commit secrets to GitHub.
 
-The frontend defaults to the existing backend URL in `src/lib/api.js`.
-If your actual Render backend URL differs, set `VITE_API_BASE_URL` in Vercel
-(Project -> Settings -> Environment Variables) to the correct backend base URL,
-then redeploy the frontend. If API-key authentication is enabled, set the same
-`VITE_API_KEY` value in Vercel as `APP_API_KEY` on the backend.
+## 3. Configure Vercel frontend
 
-## Verify
+Set `VITE_API_BASE_URL` to the exact public URL of your Render backend, without
+a trailing slash. If API-key authentication is enabled, set `VITE_API_KEY` to
+the same value as backend `APP_API_KEY`. Redeploy the frontend after changes.
 
-1. Set the four SMTP variables on the backend.
-2. Ensure the backend hosting plan permits outbound SMTP.
-3. Redeploy/restart the backend.
-4. Deploy the updated frontend to Vercel.
-5. Generate an offer letter, enter a recipient email address, and click `Send Mail`.
-6. Confirm the recipient receives the PDF attachment. The UI reports an error if
-   the backend rejects the request; a success message is shown only after SMTP
-   accepts the message.
+## 4. Deploy and test
+
+1. Push the updated backend to GitHub and deploy/redeploy the Render service.
+2. Confirm `GET /api/health` responds successfully.
+3. Deploy the frontend to Vercel.
+4. Generate an offer letter and send it to an address you are authorized to contact.
+5. Confirm the PDF arrives. The API reports success only after Resend accepts
+   the request. Provider acceptance does not guarantee inbox delivery; check
+   Resend delivery events and spam folders if necessary.
