@@ -18,7 +18,7 @@ Create a Google App Password after enabling 2-Step Verification. Do not use your
 ## Other settings
 
 - Frontend origin: `https://offerletter-frontend.vercel.app`
-- Backend URL: `https://offerletter-backend-o6jw.onrender.com`
+- Backend URL: `https://offerletter-backend-ihy7.onrender.com`
 - Health check: `/api/health`
 - Optional persistent disk mount: `/var/data`; set `UPLOAD_DIR=/var/data/uploads`.
 
