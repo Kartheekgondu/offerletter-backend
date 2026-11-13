@@ -1,24 +1,25 @@
 # Offer Letter backend deployment (Render)
 
-## Email configuration
+## Email configuration — Gmail SMTP
 
-This backend sends offer-letter emails through the Resend HTTPS API, not Gmail SMTP.
-Render Free web services block outbound SMTP ports 25, 465, and 587.
+The backend uses Spring Boot `JavaMailSender` and attaches the generated offer-letter PDF. No Resend account or Resend environment variables are used.
 
-1. Create an account at https://resend.com/.
-2. Verify a domain you own in Resend.
-3. Create an API key.
-4. In Render -> backend service -> Environment, set:
-   - `RESEND_API_KEY`: your Resend API key
-   - `RESEND_FROM_EMAIL`: a sender address on your verified domain, e.g. `Offer Letters <offers@yourdomain.com>`
-5. Keep the database and other required environment variables configured.
-6. Deploy the backend from the `main` branch.
+Set these variables in Render -> backend service -> Environment:
+
+- `SMTP_HOST=smtp.gmail.com`
+- `SMTP_PORT=587`
+- `SMTP_USERNAME=your-company-gmail@gmail.com`
+- `SMTP_PASSWORD=your-16-character-google-app-password`
+
+Create a Google App Password after enabling 2-Step Verification. Do not use your normal Gmail password. Keep credentials only in Render, never in GitHub or Vercel.
+
+**Render plan limitation:** Render's free web services block outbound SMTP on ports 25, 465, and 587. This Gmail SMTP implementation will therefore time out on a Render Free web service. To use it on Render, upgrade the backend to a paid instance. Alternatively, host the backend on a platform that permits outbound SMTP, or use an HTTPS email API (which you previously asked not to use).
 
 ## Other settings
 
 - Frontend origin: `https://offerletter-frontend.vercel.app`
-- Backend URL: `https://offerletter-backend-316h.onrender.com`
+- Backend URL: `https://offerletter-backend-o6jw.onrender.com`
 - Health check: `/api/health`
 - Optional persistent disk mount: `/var/data`; set `UPLOAD_DIR=/var/data/uploads`.
 
-Never commit API keys, database passwords, or other secrets. Rotate credentials previously committed or shared.
+Never commit API keys, SMTP passwords, database passwords, or other secrets. Rotate any credentials that were exposed in uploaded archives or Git history.
