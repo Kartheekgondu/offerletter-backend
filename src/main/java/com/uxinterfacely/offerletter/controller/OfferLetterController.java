@@ -15,45 +15,45 @@ public class OfferLetterController {
         this.service = service;
     }
 
-    @PostMapping(value="/save-offer", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Map<String,Object>> save(
-            @RequestParam Map<String,String> fields,
-            @RequestPart(value="pdf", required=false) MultipartFile pdf) throws Exception {
-        return ResponseEntity.ok(service.save(fields,pdf));
+    @PostMapping(value = "/save-offer", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> save(
+            @RequestParam Map<String, String> fields,
+            @RequestPart(value = "pdf", required = false) MultipartFile pdf) throws Exception {
+        return ResponseEntity.ok(service.save(fields, pdf));
     }
 
-    @PostMapping(value="/send-offer", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Map<String,Object>> send(
-            @RequestParam Map<String,String> fields,
-            @RequestPart(value="pdf", required=false) MultipartFile pdf) throws Exception {
-        return ResponseEntity.ok(service.send(fields,pdf));
+    @PostMapping(value = "/send-offer", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> send(
+            @RequestParam Map<String, String> fields,
+            @RequestPart(value = "pdf", required = false) MultipartFile pdf) throws Exception {
+        return ResponseEntity.ok(service.send(fields, pdf));
     }
 
     @GetMapping("/offers")
-    public ResponseEntity<Map<String,Object>> listRecent() {
+    public ResponseEntity<Map<String, Object>> listRecent() {
         return ResponseEntity.ok(service.listRecent());
     }
 
     @GetMapping("/offers/{id}")
-    public ResponseEntity<Map<String,Object>> getOffer(@PathVariable Long id) {
+    public ResponseEntity<Map<String, Object>> getOffer(@PathVariable Long id) {
         return ResponseEntity.ok(service.getOffer(id));
     }
 
-    // Both legacy and Appraisal-style search routes are supported.
-    @GetMapping({"/search-offers", "/offers/search"})
-    public ResponseEntity<Map<String,Object>> search(
-            @RequestParam(name="name", required=false) String name,
-            @RequestParam(name="q", required=false) String q) {
-        String term = (name != null && !name.isBlank()) ? name.trim()
-                : (q != null ? q.trim() : "");
-        if (term.isEmpty()) {
-            return ResponseEntity.ok(Map.of("success", true, "results", List.of()));
-        }
+    // Appraisal-style route, plus backwards-compatible legacy route.
+    @GetMapping({"/offers/search", "/search-offers"})
+    public ResponseEntity<Map<String, Object>> search(
+            @RequestParam(name = "q", required = false) String q,
+            @RequestParam(name = "name", required = false) String name) {
+        String term = (q != null && !q.isBlank()) ? q.trim()
+                : (name != null ? name.trim() : "");
         return ResponseEntity.ok(service.search(term));
     }
 
     @GetMapping("/health")
-    public Map<String,Object> health() {
-        return service.health();
+    public Map<String, Object> health() {
+        Map<String, Object> result = new LinkedHashMap<>(service.health());
+        result.put("apiVersion", "offerletter-search-v2");
+        result.put("searchRoutes", List.of("/api/offers/search?q=", "/api/search-offers?name="));
+        return result;
     }
 }
