@@ -1,21 +1,22 @@
+
 package com.uxinterfacely.offerletter.service;
 
 import com.uxinterfacely.offerletter.model.OfferSend;
 import com.uxinterfacely.offerletter.repository.OfferSendRepository;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
+
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.stereotype.Service;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -26,8 +27,14 @@ public class OfferLetterService {
     private final FileStorageService storage;
     private final JavaMailSender mailSender;
 
-    @Value("${app.email.from:${spring.mail.username:}}")
+    @Value("${app.email.from:}")
     private String emailFrom;
+
+    @Value("${spring.mail.username:}")
+    private String mailUsername;
+
+    @Value("${spring.mail.password:}")
+    private String mailPassword;
 
     @Value("${app.public-base-url:http://localhost:9091}")
     private String publicBaseUrl;
@@ -89,7 +96,7 @@ public class OfferLetterService {
 
 
     // ==========================================
-    // SEND OFFER LETTER EMAIL (SMTP, same pattern as Appraisal)
+    // SEND OFFER LETTER EMAIL (Appraisal-style Gmail SMTP)
     // ==========================================
 
     public Map<String, Object> send(
@@ -115,13 +122,15 @@ public class OfferLetterService {
 
         byte[] pdfBytes = pdf.getBytes();
         if (pdfBytes.length < 5 ||
-                !new String(pdfBytes, 0, 5, StandardCharsets.US_ASCII).equals("%PDF-")) {
+                !new String(pdfBytes, 0, 5, java.nio.charset.StandardCharsets.US_ASCII).equals("%PDF-")) {
             throw new IllegalArgumentException("The attachment is not a valid PDF. Generate the offer letter again.");
         }
 
-        if (emailFrom == null || emailFrom.isBlank()) {
+        if (mailUsername == null || mailUsername.isBlank()
+                || mailPassword == null || mailPassword.isBlank()
+                || emailFrom == null || emailFrom.isBlank()) {
             throw new IllegalStateException(
-                    "Email sender is not configured. Set MAIL_USERNAME or MAIL_FROM in the backend environment.");
+                    "Email service is not configured. Set MAIL_USERNAME, MAIL_PASSWORD and MAIL_FROM in the backend environment.");
         }
 
         String safeCandidate = candidate.replaceAll("[^A-Za-z0-9_-]", "_");
@@ -134,8 +143,8 @@ public class OfferLetterService {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(emailFrom.trim());
             helper.setTo(recipient);
+            helper.setFrom(emailFrom.trim());
             helper.setSubject("Offer Letter - " + candidate);
             helper.setText(emailText, false);
             helper.addAttachment(
@@ -149,17 +158,17 @@ public class OfferLetterService {
             result.put("success", true);
             result.put("message", "Offer letter email sent successfully.");
             result.put("recipient", recipient);
-            result.put("provider", "SMTP");
+            result.put("provider", "Gmail SMTP");
             return result;
 
         } catch (MessagingException | MailException ex) {
             throw new IllegalStateException(
-                    "Unable to send offer letter email. Check SMTP host, port, username, app password and network access.", ex);
+                    "Unable to send offer letter email. Check Gmail SMTP settings and Google App Password.", ex);
         }
     }
 
 
-        // ==========================================
+    // ==========================================
     // BACKEND HEALTH CHECK
     // ==========================================
 
