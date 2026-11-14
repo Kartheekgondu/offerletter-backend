@@ -1,23 +1,21 @@
-
 package com.uxinterfacely.offerletter.service;
 
 import com.uxinterfacely.offerletter.model.OfferSend;
 import com.uxinterfacely.offerletter.repository.OfferSendRepository;
-
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.mail.MailException;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -26,14 +24,10 @@ public class OfferLetterService {
 
     private final OfferSendRepository repository;
     private final FileStorageService storage;
-    @Value("${app.email.resend-api-key:}")
-    private String resendApiKey;
+    private final JavaMailSender mailSender;
 
-    @Value("${app.email.from:}")
+    @Value("${app.email.from:${spring.mail.username:}}")
     private String emailFrom;
-
-    private final HttpClient httpClient = HttpClient.newHttpClient();
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${app.public-base-url:http://localhost:9091}")
     private String publicBaseUrl;
@@ -41,10 +35,12 @@ public class OfferLetterService {
 
     public OfferLetterService(
             OfferSendRepository repository,
-            FileStorageService storage) {
+            FileStorageService storage,
+            JavaMailSender mailSender) {
 
         this.repository = repository;
         this.storage = storage;
+        this.mailSender = mailSender;
     }
 
 
@@ -93,7 +89,7 @@ public class OfferLetterService {
 
 
     // ==========================================
-    // SEND OFFER LETTER EMAIL (Resend HTTPS API)
+    // SEND OFFER LETTER EMAIL (SMTP, same pattern as Appraisal)
     // ==========================================
 
     public Map<String, Object> send(
@@ -119,17 +115,13 @@ public class OfferLetterService {
 
         byte[] pdfBytes = pdf.getBytes();
         if (pdfBytes.length < 5 ||
-                !new String(pdfBytes, 0, 5, java.nio.charset.StandardCharsets.US_ASCII).equals("%PDF-")) {
+                !new String(pdfBytes, 0, 5, StandardCharsets.US_ASCII).equals("%PDF-")) {
             throw new IllegalArgumentException("The attachment is not a valid PDF. Generate the offer letter again.");
         }
 
-        if (resendApiKey == null || resendApiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "Email service is not configured. Set RESEND_API_KEY in the backend environment.");
-        }
         if (emailFrom == null || emailFrom.isBlank()) {
             throw new IllegalStateException(
-                    "Email sender is not configured. Set RESEND_FROM_EMAIL to an address on your verified Resend domain.");
+                    "Email sender is not configured. Set MAIL_USERNAME or MAIL_FROM in the backend environment.");
         }
 
         String safeCandidate = candidate.replaceAll("[^A-Za-z0-9_-]", "_");
@@ -140,49 +132,30 @@ public class OfferLetterService {
                 + ".\n\nRegards,\nHR Department\nUXINTERFACELY IT SOLUTIONS LLP";
 
         try {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("from", emailFrom.trim());
-            payload.put("to", List.of(recipient));
-            payload.put("subject", "Offer Letter - " + candidate);
-            payload.put("text", emailText);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(emailFrom.trim());
+            helper.setTo(recipient);
+            helper.setSubject("Offer Letter - " + candidate);
+            helper.setText(emailText, false);
+            helper.addAttachment(
+                    safeCandidate + "_Offer_Letter.pdf",
+                    new ByteArrayResource(pdfBytes),
+                    "application/pdf");
 
-            Map<String, Object> attachment = new LinkedHashMap<>();
-            attachment.put("filename", safeCandidate + "_Offer_Letter.pdf");
-            attachment.put("content", Base64.getEncoder().encodeToString(pdfBytes));
-            payload.put("attachments", List.of(attachment));
-
-            String json = objectMapper.writeValueAsString(payload);
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.resend.com/emails"))
-                    .header("Authorization", "Bearer " + resendApiKey.trim())
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(
-                    request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                String detail = response.body() == null ? "" : response.body();
-                throw new IllegalStateException("Email provider rejected the message (HTTP "
-                        + response.statusCode() + "): "
-                        + detail.substring(0, Math.min(detail.length(), 500)));
-            }
+            mailSender.send(message);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("success", true);
-            result.put("message", "Offer letter email accepted by the email provider.");
+            result.put("message", "Offer letter email sent successfully.");
             result.put("recipient", recipient);
-            result.put("provider", "Resend");
+            result.put("provider", "SMTP");
             return result;
 
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Email sending was interrupted. Please retry.", ex);
-        } catch (java.io.IOException ex) {
-            throw new IllegalStateException("Could not reach the email provider API: " + safeMessage(ex), ex);
+        } catch (MessagingException | MailException ex) {
+            throw new IllegalStateException(
+                    "Unable to send offer letter email. Check SMTP host, port, username, app password and network access.", ex);
         }
-
     }
 
 

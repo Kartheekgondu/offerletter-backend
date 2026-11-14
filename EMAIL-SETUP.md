@@ -1,43 +1,65 @@
-# Offer Letter email setup (Resend HTTPS API)
+# Offer Letter project — SMTP email implementation
 
-The frontend posts the generated offer-letter PDF to `POST /api/send-offer`.
-The backend sends it as an attachment through Resend's HTTPS API. This avoids
-SMTP ports, which are blocked on Render Free.
+This version adapts the Appraisal project's `JavaMailSender` + `MimeMessageHelper` pattern to Offer Letter.
+It does **not** use Resend and does **not** require `RESEND_API_KEY`.
 
-## 1. Configure Resend
+## What changed
+- Backend `pom.xml`: added `spring-boot-starter-mail`.
+- `OfferLetterService`: sends a personalized email using `JavaMailSender`, attaches the generated offer PDF, validates recipient and PDF signature, and returns success only after `mailSender.send` returns.
+- `application.properties`: SMTP settings are read from environment variables. No API key, Gmail password, or database password is hardcoded.
+- Frontend API and Vercel routing are retained from the uploaded project; the send endpoint remains `POST /api/send-offer`.
 
-1. Create an account at https://resend.com/.
-2. Add and verify a domain you control in Resend. Publish the DNS records Resend provides.
-3. Create a Resend API key.
-4. Set a sender address on that verified domain, e.g. `Offer Letters <offers@yourdomain.com>`.
+## Local Windows CMD setup
+Open CMD in the backend folder and set values in the same window before starting Spring Boot:
 
-A verified sender domain is required to send to arbitrary recipients. Do not use
-a sender address you do not control.
+```cmd
+set MAIL_HOST=smtp.gmail.com
+set MAIL_PORT=587
+set MAIL_USERNAME=your-sender@gmail.com
+set MAIL_PASSWORD=your-16-character-google-app-password
+set MAIL_FROM=your-sender@gmail.com
+set DB_URL=jdbc:mysql://localhost:3306/offerletter_db
+set DB_USERNAME=root
+set DB_PASSWORD=your-local-mysql-password
+mvn clean spring-boot:run
+```
 
-## 2. Configure Render backend environment
+Use a Google App Password with 2-Step Verification enabled. Do not use your normal Google account password. Keep credentials out of source control.
 
-In Render -> backend service -> Environment, add:
+In a second CMD, open the frontend folder and run:
 
-- `RESEND_API_KEY` = your Resend API key
-- `RESEND_FROM_EMAIL` = `Offer Letters <offers@yourdomain.com>`
-- `APP_ALLOWED_ORIGINS` = `https://offerletter-frontend.vercel.app`
-- `APP_PUBLIC_BASE_URL` = your actual Render backend URL
-- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` = your database connection values
+```cmd
+npm install
+npm run dev
+```
 
-Never put the Resend API key in Vercel or frontend code. Never commit secrets to GitHub.
+## Render deployment warning
+Render Free does not permit outbound SMTP on ports 25, 465, or 587. This SMTP version therefore will **not send email from Render Free** even if credentials are correct. Use a hosting plan/provider that permits outbound SMTP, or switch the backend email transport to an HTTPS email API (for example Resend) for Render Free. Do not bypass provider restrictions.
 
-## 3. Configure Vercel frontend
+For a SMTP-capable host, configure these environment variables on the backend service:
+- `MAIL_HOST` (usually `smtp.gmail.com`)
+- `MAIL_PORT` (usually `587`)
+- `MAIL_USERNAME`
+- `MAIL_PASSWORD` (Google App Password)
+- `MAIL_FROM` (same authorized sender address)
+- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`
+- `APP_ALLOWED_ORIGINS` (your exact Vercel origin)
+- `APP_PUBLIC_BASE_URL` (your backend public URL)
 
-Set `VITE_API_BASE_URL` to the exact public URL of your Render backend, without
-a trailing slash. If API-key authentication is enabled, set `VITE_API_KEY` to
-the same value as backend `APP_API_KEY`. Redeploy the frontend after changes.
+## Deploy/build
+Backend:
+```cmd
+mvn clean package
+```
+Frontend:
+```cmd
+npm install
+npm run build
+```
 
-## 4. Deploy and test
+## Test
+- Local backend health: `http://localhost:9091/api/health`
+- Frontend local: `http://localhost:5173`
+- Test sending to an email address you control. Confirm receipt and PDF attachment.
 
-1. Push the updated backend to GitHub and deploy/redeploy the Render service.
-2. Confirm `GET /api/health` responds successfully.
-3. Deploy the frontend to Vercel.
-4. Generate an offer letter and send it to an address you are authorized to contact.
-5. Confirm the PDF arrives. The API reports success only after Resend accepts
-   the request. Provider acceptance does not guarantee inbox delivery; check
-   Resend delivery events and spam folders if necessary.
+The source files have been updated, but a real email delivery test requires your SMTP credentials and a network that permits SMTP. Do not share credentials in chat or commit them to GitHub.
