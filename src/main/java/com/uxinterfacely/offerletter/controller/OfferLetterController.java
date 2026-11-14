@@ -10,36 +10,67 @@ import java.util.*;
 @RequestMapping("/api")
 public class OfferLetterController {
     private final OfferLetterService service;
-    public OfferLetterController(OfferLetterService service){this.service=service;}
 
-    @PostMapping(value="/save-offer", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Map<String,Object>> save(@RequestParam Map<String,String> fields,
-            @RequestPart(value="pdf", required=false) MultipartFile pdf) throws Exception {
-        return ResponseEntity.ok(service.save(fields,pdf));
+    public OfferLetterController(OfferLetterService service) {
+        this.service = service;
     }
 
-    @PostMapping(value="/send-offer", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Map<String,Object>> send(@RequestParam Map<String,String> fields,
-            @RequestPart(value="pdf", required=false) MultipartFile pdf) throws Exception {
-        return ResponseEntity.ok(service.send(fields,pdf));
+    @PostMapping(value = "/save-offer", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> save(
+            @RequestParam Map<String, String> fields,
+            @RequestPart(value = "pdf", required = false) MultipartFile pdf) throws Exception {
+        return ResponseEntity.ok(service.save(fields, pdf));
+    }
+
+    @PostMapping(value = "/send-offer", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> send(
+            @RequestParam Map<String, String> fields,
+            @RequestPart(value = "pdf", required = false) MultipartFile pdf) throws Exception {
+        return ResponseEntity.ok(service.send(fields, pdf));
     }
 
     @GetMapping("/offers")
-    public ResponseEntity<Map<String,Object>> listRecent() {
+    public ResponseEntity<Map<String, Object>> listRecent() {
         return ResponseEntity.ok(service.listRecent());
     }
 
     @GetMapping("/offers/{id}")
-    public ResponseEntity<Map<String,Object>> getOffer(@PathVariable Long id) {
+    public ResponseEntity<Map<String, Object>> getOffer(@PathVariable Long id) {
         return ResponseEntity.ok(service.getOffer(id));
     }
 
-    @GetMapping("/search-offers")
-    public ResponseEntity<Map<String,Object>> search(@RequestParam(name = "name") String name) {
-        if (name == null || name.trim().isEmpty()) throw new IllegalArgumentException("Search name is required");
-        return ResponseEntity.ok(service.search(name.trim()));
+    /*
+     * Search endpoint supports both the original Offer Letter route and the
+     * Appraisal-style REST route. This prevents old/new frontend deployments
+     * from failing with 404 while they are being updated.
+     *
+     * Supported:
+     *   GET /api/search-offers?name=Kartheek
+     *   GET /api/offers/search?q=Kartheek
+     *   GET /api/offers/search?name=Kartheek
+     */
+    @GetMapping({"/search-offers", "/offers/search"})
+    public ResponseEntity<Map<String, Object>> search(
+            @RequestParam(name = "name", required = false) String name,
+            @RequestParam(name = "q", required = false) String q,
+            @RequestParam(name = "query", required = false) String query) {
+
+        String searchTerm = firstNonBlank(name, q, query);
+        if (searchTerm == null) {
+            return ResponseEntity.ok(Map.of("success", true, "results", List.of()));
+        }
+        return ResponseEntity.ok(service.search(searchTerm.trim()));
     }
 
     @GetMapping("/health")
-    public Map<String,Object> health(){return service.health();}
+    public Map<String, Object> health() {
+        return service.health();
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) return value;
+        }
+        return null;
+    }
 }
