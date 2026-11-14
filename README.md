@@ -1,64 +1,49 @@
-# Offer Letter Backend — Appraisal datasource pattern
+# Offer Letter Backend — Appraisal-style datasource + CORS fix
 
-This backend has been updated to follow the database configuration approach used by the supplied Appraisal backend.
+This is the complete Offer Letter backend source. The database environment processor follows the uploaded Appraisal backend's `DatasourceEnvironmentPostProcessor` pattern. The Offer Letter controllers, entities, repository, services, PDF upload and Gmail SMTP implementation are retained.
 
-## Important change
+## Important diagnosis
 
-The Offer Letter backend previously created its own `DataSource` bean in `DataSourceConfig`. That custom bean bypassed the standard Spring datasource normalization approach used by Appraisal.
+The browser screenshot says `Failed to fetch`, but the Render logs show Spring Boot fails during startup with MySQL `Communications link failure`. When the backend process is down, the browser cannot reach it and may display a fetch/CORS-style message. Fixing CORS alone cannot fix a backend that never starts.
 
-This package removes that custom `DataSourceConfig` and adds the Appraisal-style `DatasourceEnvironmentPostProcessor`. Spring Boot's standard Hikari datasource auto-configuration now reads:
+The CORS filter is configured for `/api/**`, allows GET/POST/PUT/PATCH/DELETE/OPTIONS and accepts the configured frontend origins. It also allows OPTIONS preflight before the optional API-key filter.
 
-- `SPRING_DATASOURCE_URL`
-- `SPRING_DATASOURCE_USERNAME`
-- `SPRING_DATASOURCE_PASSWORD`
+## Render Environment variables
 
-The post-processor:
-- Accepts a `mysql://user:password@host:port/database?...` Aiven URL and converts it to JDBC.
-- Extracts credentials from a URL if separate username/password variables are not set.
-- Normalizes quotes/whitespace.
-- Converts `ssl-mode` to Connector/J `sslMode`.
-- Adds `sslMode=REQUIRED` for remote MySQL URLs if no SSL option is present.
-- Fails clearly if Render is configured with localhost.
+Set these on the **Offer Letter backend Web Service**:
 
-## Render environment
+- `SPRING_DATASOURCE_URL` — full JDBC URL copied from Aiven/MySQL provider.
+- `SPRING_DATASOURCE_USERNAME` — exact database username.
+- `SPRING_DATASOURCE_PASSWORD` — current database password.
+- `JPA_DDL_AUTO` — `update`.
+- `APP_ALLOWED_ORIGINS` — exact Vercel frontend origin. Example: `https://offerletter-frontend.vercel.app`. For Vercel previews, add `https://*.vercel.app` only if you intentionally want all Vercel preview origins.
+- `APP_PUBLIC_BASE_URL` — `https://offerletter-backend-ihy7.onrender.com`.
+- `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` — set new Gmail credentials only after rotating the exposed App Password.
 
-In Render → Offer Letter backend Web Service → Environment, set these exact names:
+For Aiven, copy the JDBC URL from Aiven's MySQL service Connection Information. It should resemble:
 
-| Variable | Value |
-|---|---|
-| `SPRING_DATASOURCE_URL` | Full Aiven JDBC URL or Aiven `mysql://...` connection URL |
-| `SPRING_DATASOURCE_USERNAME` | Aiven MySQL username |
-| `SPRING_DATASOURCE_PASSWORD` | Aiven MySQL password |
-| `JPA_DDL_AUTO` | `update` |
-| `APP_ALLOWED_ORIGINS` | `http://localhost:5173,https://YOUR-VERCEL-DOMAIN` |
-| `APP_PUBLIC_BASE_URL` | `https://YOUR-RENDER-BACKEND.onrender.com` |
-| `MAIL_USERNAME` | Gmail address |
-| `MAIL_PASSWORD` | New Google App Password |
-| `MAIL_FROM` | Gmail address |
+`jdbc:mysql://HOST:PORT/DATABASE?sslMode=REQUIRED`
 
-For the URL, best practice is to copy the JDBC URL from Aiven's Connection Information. It should look like:
+Do not use localhost, the Aiven console URL, or an arbitrary host. Ensure the Aiven service is Running, public access is enabled if using public networking, and the Aiven IP allowlist/network rules permit the Render service's outbound connection. Use the exact username supplied by Aiven; do not assume it is `root`.
 
-`jdbc:mysql://YOUR-HOST:YOUR-PORT/YOUR-DATABASE?sslMode=REQUIRED`
+The datasource post-processor also accepts a provider URI of the form `mysql://user:password@host:port/database?...` and normalizes it to JDBC, as the Appraisal backend does. Prefer setting username and password in their separate Render variables rather than embedding credentials in the URL.
 
-If using Aiven's `mysql://username:password@host:port/database?ssl-mode=REQUIRED` URI, the included processor converts it. Do not add quotes around values.
+## CORS
 
-## Aiven checklist
-
-1. Confirm the MySQL service is Running.
-2. Copy the hostname, port, database name and username from the correct Aiven service.
-3. Ensure public access is enabled if Render connects over the internet.
-4. Ensure Aiven's IP allowlist/firewall permits Render's outbound traffic. Use the current outbound IP information for your Render service/region; do not guess.
-5. Confirm the user has privileges on the database.
+The frontend origin must match exactly, including `https://` and no path. The screenshot's frontend origin appears to be `https://offerletter-frontend.vercel.app`; set that exact value in `APP_ALLOWED_ORIGINS`. CORS does not make an offline backend reachable.
 
 ## Deploy
 
-1. Replace the Offer Letter backend source with this package (keep the folder structure).
-2. Commit and push to the configured GitHub repository.
-3. In Render, confirm the Environment variables above are set.
-4. Select Manual Deploy → Deploy latest commit.
-5. Inspect the *new deployment's* logs. If the same `Communications link failure` persists, the URL or database network access is still wrong; Java code cannot repair an unreachable host or blocked port.
+1. Replace the local backend project with this extracted project.
+2. Confirm Render Environment variables above.
+3. Commit and push to GitHub.
+4. In Render, deploy the latest commit.
+5. Check logs for successful Spring Boot startup.
+6. Test `https://offerletter-backend-ihy7.onrender.com/api/health`.
 
-## Local run (Windows CMD)
+If logs still show `Communications link failure`, inspect the JDBC host/port, Aiven service status, public access and IP allowlist. This is a database networking issue, not a CORS setting.
+
+## Local Windows CMD
 
 ```cmd
 set SPRING_DATASOURCE_URL=jdbc:mysql://localhost:3306/offerletter_db
@@ -67,15 +52,8 @@ set SPRING_DATASOURCE_PASSWORD=YOUR_LOCAL_MYSQL_PASSWORD
 mvn clean spring-boot:run
 ```
 
-## Email and PDF notes
+## Notes
 
-- Gmail SMTP remains implemented using Spring JavaMailSender. Render Free may block outbound SMTP port 587; this is separate from the MySQL startup failure.
-- Render local filesystem is ephemeral unless a persistent disk is attached. Uploaded files under `uploads/` may not survive restarts/redeploys.
-
-## Build
-
-```cmd
-mvn clean package
-```
-
-This ZIP excludes `.git` history, build output, and hardcoded credentials. The React/Vite frontend is not included.
+- Gmail SMTP on port 587 may be blocked by Render Free. That is separate from MySQL startup.
+- Render's filesystem is ephemeral unless you attach persistent storage. Uploaded PDFs in `uploads/` may not survive restarts/redeploys.
+- Never commit database passwords, Gmail App Passwords or API keys.
