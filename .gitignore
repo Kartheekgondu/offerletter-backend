@@ -4,4 +4,4 @@
 .env.*
 !.env.example
 uploads/
-src/main/resources/application-local.properties
+*.log

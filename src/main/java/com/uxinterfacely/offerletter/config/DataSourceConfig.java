@@ -1,9 +1,10 @@
 package com.uxinterfacely.offerletter.config;
 
 import java.net.URI;
-
 import javax.sql.DataSource;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,23 +12,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
-
-/**
- * Builds the MySQL DataSource from DB_URL / DB_USERNAME / DB_PASSWORD.
- *
- * Fixes the Render error
- *   "Unable to determine Dialect without JDBC metadata"
- * which Hibernate throws whenever the database connection cannot be opened.
- * The usual causes are handled here:
- *   - URL given as  mysql://...  instead of  jdbc:mysql://...
- *   - URL in the form  mysql://user:password@host:port/db
- *   - stray spaces / quotes copied into the Render environment value
- */
 @Configuration
 public class DataSourceConfig {
-
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfig.class);
 
     @Bean
@@ -39,44 +25,44 @@ public class DataSourceConfig {
 
         String url = clean(rawUrl);
         String user = clean(rawUser);
-        String password = rawPassword == null ? "" : stripQuotes(rawPassword);
+        String password = stripQuotes(rawPassword == null ? "" : rawPassword.trim());
 
         if (url.isEmpty()) {
-            throw new IllegalStateException(
-                    "DB_URL is empty. Set DB_URL in Render, e.g. jdbc:mysql://HOST:3306/DBNAME?sslMode=REQUIRED");
+            throw new IllegalStateException("DB_URL is missing. Set the full MySQL JDBC URL in Render Environment.");
         }
 
-        // Accept  mysql://user:pass@host:port/db?params  and add the jdbc: prefix.
-        if (!url.regionMatches(true, 0, "jdbc:", 0, 5)) {
-            if (!url.regionMatches(true, 0, "mysql://", 0, 8)) {
-                throw new IllegalStateException(
-                        "DB_URL must start with jdbc:mysql:// (current value starts with '"
-                                + url.substring(0, Math.min(url.length(), 12)) + "')");
-            }
+        if (url.regionMatches(true, 0, "mysql://", 0, 8)) {
             try {
                 URI uri = URI.create(url);
-                String userInfo = uri.getUserInfo();
-                if (userInfo != null && !userInfo.isEmpty()) {
-                    int colon = userInfo.indexOf(':');
-                    String uriUser = colon >= 0 ? userInfo.substring(0, colon) : userInfo;
-                    String uriPass = colon >= 0 ? userInfo.substring(colon + 1) : "";
-                    if (user.isEmpty()) user = uriUser;
-                    if (password.isEmpty()) password = uriPass;
+                if (uri.getHost() == null || uri.getHost().isBlank()) {
+                    throw new IllegalArgumentException("DB_URL has no database host");
                 }
-                StringBuilder sb = new StringBuilder("jdbc:mysql://").append(uri.getHost());
-                if (uri.getPort() > 0) sb.append(':').append(uri.getPort());
-                sb.append(uri.getRawPath() == null ? "" : uri.getRawPath());
-                if (uri.getRawQuery() != null) sb.append('?').append(uri.getRawQuery());
-                url = sb.toString();
+                if (uri.getUserInfo() != null && !uri.getUserInfo().isBlank()) {
+                    String[] credentials = uri.getUserInfo().split(":", 2);
+                    if (user.isBlank()) user = credentials[0];
+                    if (password.isBlank() && credentials.length > 1) password = credentials[1];
+                }
+                StringBuilder jdbc = new StringBuilder("jdbc:mysql://").append(uri.getHost());
+                if (uri.getPort() > 0) jdbc.append(':').append(uri.getPort());
+                if (uri.getRawPath() != null) jdbc.append(uri.getRawPath());
+                if (uri.getRawQuery() != null) jdbc.append('?').append(uri.getRawQuery());
+                url = jdbc.toString();
             } catch (IllegalArgumentException ex) {
-                // e.g. password with special characters inside the URL
-                url = "jdbc:" + url;
+                throw new IllegalStateException("DB_URL is not a valid mysql:// URL. Prefer the JDBC URL from your database provider.", ex);
             }
         }
 
-        if (user.isEmpty()) user = "root";
+        if (!url.regionMatches(true, 0, "jdbc:mysql://", 0, 13)) {
+            throw new IllegalStateException("DB_URL must start with jdbc:mysql:// (copy the JDBC URL from Aiven).");
+        }
+        if (user.isBlank()) {
+            throw new IllegalStateException("DB_USERNAME is missing. Set the database username in Render Environment.");
+        }
+        if (password.isBlank()) {
+            throw new IllegalStateException("DB_PASSWORD is missing. Set the database password in Render Environment.");
+        }
 
-        log.info("Database target: {} (user: {})", maskUrl(url), user);
+        log.info("Configuring MySQL connection to {}", maskUrl(url));
 
         HikariConfig cfg = new HikariConfig();
         cfg.setJdbcUrl(url);
@@ -84,28 +70,29 @@ public class DataSourceConfig {
         cfg.setPassword(password);
         cfg.setDriverClassName("com.mysql.cj.jdbc.Driver");
         cfg.setPoolName("offerletter-pool");
-        cfg.setMaximumPoolSize(5);          // small pool: Render free tier + hosted MySQL limits
-        cfg.setMinimumIdle(1);
-        cfg.setConnectionTimeout(30_000);   // allow slow / waking databases
-        cfg.setMaxLifetime(25 * 60 * 1000L); // recycle before the DB host drops idle connections
+        cfg.setMaximumPoolSize(5);
+        cfg.setMinimumIdle(0);
+        cfg.setConnectionTimeout(30000);
+        cfg.setValidationTimeout(10000);
+        cfg.setInitializationFailTimeout(30000);
+        cfg.setMaxLifetime(1500000);
         return new HikariDataSource(cfg);
     }
 
-    private static String clean(String v) {
-        return v == null ? "" : stripQuotes(v.trim());
+    private static String clean(String value) {
+        return value == null ? "" : stripQuotes(value.trim());
     }
 
-    private static String stripQuotes(String v) {
-        String s = v;
-        if (s.length() >= 2
-                && ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'")))) {
-            s = s.substring(1, s.length() - 1);
+    private static String stripQuotes(String value) {
+        if (value.length() >= 2 &&
+                ((value.startsWith("\"") && value.endsWith("\"")) ||
+                 (value.startsWith("'") && value.endsWith("'")))) {
+            return value.substring(1, value.length() - 1);
         }
-        return s;
+        return value;
     }
 
-    /** Remove any password that might be embedded in the URL before logging. */
-    private static String maskUrl(String url) {
-        return url.replaceAll("//[^/@]*@", "//***@");
+    private static String maskUrl(String value) {
+        return value.replaceAll("//[^/@]*@", "//***@");
     }
 }

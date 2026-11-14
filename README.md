@@ -1,64 +1,60 @@
-# Offer Letter Backend
+# Offer Letter Backend — Render / MySQL configuration
 
-Spring Boot 3.4.5 backend for the Offer Letter application. This project uses MySQL through a configurable HikariCP data source and Gmail SMTP through Spring `JavaMailSender`.
+This is the Spring Boot backend. It uses MySQL via a custom HikariCP `DataSourceConfig` and Gmail SMTP via `JavaMailSender`.
 
-## Configuration
+## Fixing Render's `Communications link failure`
 
-No passwords or API keys are stored in `application.properties`. Configure these environment variables where the backend runs:
+The log shows the application cannot establish a TCP/JDBC connection to MySQL. This happens before Hibernate can initialize. It is usually caused by an incorrect database host/port, wrong JDBC URL, database not publicly reachable, IP allowlist, or a stopped/expired database. It is not a Gmail SMTP problem.
 
-| Variable | Purpose |
-|---|---|
-| `DB_URL` | JDBC URL, e.g. `jdbc:mysql://HOST:3306/DBNAME?sslMode=REQUIRED` |
-| `DB_USERNAME` | MySQL username |
-| `DB_PASSWORD` | MySQL password |
-| `JPA_DDL_AUTO` | Hibernate schema mode; defaults to `update` |
-| `MAIL_HOST` | SMTP host; defaults to `smtp.gmail.com` |
-| `MAIL_PORT` | SMTP port; defaults to `587` |
-| `MAIL_USERNAME` | Gmail account address |
-| `MAIL_PASSWORD` | Google App Password (not the normal Gmail password) |
-| `MAIL_FROM` | Sender address; defaults to `MAIL_USERNAME` |
-| `APP_ALLOWED_ORIGINS` | Comma-separated frontend origins |
-| `APP_PUBLIC_BASE_URL` | Public backend base URL |
-| `UPLOAD_DIR` | Directory for uploaded PDF files |
-| `APP_API_KEY` | Optional API key; blank disables API-key validation |
-| `PORT` | Hosting platform port; defaults to `9091` |
+### Render Environment variables
 
-## Local run on Windows CMD
+In Render → your **backend Web Service** → Environment, set:
 
-Open CMD in the folder containing `pom.xml`, then set your local values in that CMD window:
+- `DB_URL`: exact JDBC URL from your database provider. For Aiven MySQL, use the provider's JDBC format:
+  `jdbc:mysql://YOUR-HOST:YOUR-PORT/YOUR-DATABASE?sslMode=REQUIRED`
+- `DB_USERNAME`: exact database username shown by Aiven (often `avnadmin`, not `root`)
+- `DB_PASSWORD`: database password
+- `JPA_DDL_AUTO`: `update`
+- `APP_ALLOWED_ORIGINS`: `http://localhost:5173,https://YOUR-FRONTEND.vercel.app`
+- `APP_PUBLIC_BASE_URL`: `https://YOUR-BACKEND.onrender.com`
+- `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`: set only after rotating the exposed Google App Password.
+
+Do not add quotes around environment variable values. Do not use `localhost` or `127.0.0.1` for a hosted Aiven database. Do not use the Aiven console/web URL. Copy the host, port, database name, username, and JDBC URL from Aiven → your MySQL service → Connection Information.
+
+### Aiven network access
+
+In Aiven, verify the MySQL service is running and that its allowed IP/network access includes the Render outbound source. If your Aiven plan supports public access, ensure it is enabled. If Aiven requires an IP allowlist and Render's outbound IPs are not allowed, the connection will fail. Check Render's outbound IP information for the service/region and configure the Aiven allowlist accordingly, or use a database networking option supported by both providers.
+
+### After updating variables
+
+1. Save changes in Render.
+2. Trigger **Manual Deploy → Deploy latest commit** (or wait for auto-deploy).
+3. Inspect the new logs. The datasource should log only a masked host/URL, never the password.
+4. Test `https://YOUR-BACKEND.onrender.com/api/health`.
+
+The `/api/health` endpoint queries the database, so it only returns healthy when the database is reachable.
+
+## Local run (Windows CMD)
+
+From the folder containing `pom.xml`:
 
 ```cmd
 set DB_URL=jdbc:mysql://localhost:3306/offerletter_db
 set DB_USERNAME=root
 set DB_PASSWORD=YOUR_LOCAL_MYSQL_PASSWORD
-set MAIL_HOST=smtp.gmail.com
-set MAIL_PORT=587
 set MAIL_USERNAME=YOUR_GMAIL_ADDRESS
-set MAIL_PASSWORD=YOUR_GOOGLE_APP_PASSWORD
+set MAIL_PASSWORD=YOUR_NEW_GOOGLE_APP_PASSWORD
 set MAIL_FROM=YOUR_GMAIL_ADDRESS
-set APP_ALLOWED_ORIGINS=http://localhost:5173,https://offerletter-frontend.vercel.app
-set APP_PUBLIC_BASE_URL=http://localhost:9091
 mvn clean spring-boot:run
 ```
 
-Use a Google App Password with 2-Step Verification enabled. Do not paste credentials into source files or commit them to Git.
+## Important SMTP note
 
-## API endpoints
+This project retains Gmail SMTP on port 587. Render Free may restrict outbound SMTP. If email sending times out on Render Free, that is a hosting-network restriction; use a host/provider that permits SMTP or an HTTPS email API.
 
-- `GET /api/health` — backend/database health check
-- `POST /api/save-offer` — save offer details and PDF
-- `POST /api/send-offer` — email the PDF attachment
-- `GET /api/offers` — list saved offers
-- `GET /api/offers/{id}` — retrieve an offer
-- `GET /api/search-offers?name=...` — search offers
+## PDF storage note
 
-## Render deployment notes
-
-Set the database and mail environment variables in the Render service's Environment settings. Set `APP_ALLOWED_ORIGINS` to the exact deployed frontend origin and `APP_PUBLIC_BASE_URL` to the backend's public URL.
-
-**SMTP limitation:** this implementation sends mail over SMTP port 587. Render Free may restrict outbound SMTP connections, so Gmail SMTP can fail even when credentials are correct. If outbound SMTP is blocked, use an SMTP-capable hosting plan/provider or an HTTPS email API.
-
-**PDF persistence:** the default `uploads/` directory is local container storage. On hosts with ephemeral filesystems, uploaded PDFs may disappear after redeploy/restart. Use a persistent disk or object storage if PDFs must remain available.
+`uploads/` is local container storage. Render filesystems are ephemeral unless a persistent disk is attached. Use persistent storage or object storage if saved PDFs must survive restarts/redeploys.
 
 ## Build
 
@@ -66,4 +62,4 @@ Set the database and mail environment variables in the Render service's Environm
 mvn clean package
 ```
 
-The ZIP excludes Git history, IDE metadata, build output, uploaded files, and credentials. It contains the backend only; it does not contain the React/Vite frontend.
+No credentials or Git history are included in this ZIP.
