@@ -1,60 +1,76 @@
-# Offer Letter Backend — Render / MySQL configuration
+# Offer Letter Backend — Appraisal datasource pattern
 
-This is the Spring Boot backend. It uses MySQL via a custom HikariCP `DataSourceConfig` and Gmail SMTP via `JavaMailSender`.
+This backend has been updated to follow the database configuration approach used by the supplied Appraisal backend.
 
-## Fixing Render's `Communications link failure`
+## Important change
 
-The log shows the application cannot establish a TCP/JDBC connection to MySQL. This happens before Hibernate can initialize. It is usually caused by an incorrect database host/port, wrong JDBC URL, database not publicly reachable, IP allowlist, or a stopped/expired database. It is not a Gmail SMTP problem.
+The Offer Letter backend previously created its own `DataSource` bean in `DataSourceConfig`. That custom bean bypassed the standard Spring datasource normalization approach used by Appraisal.
 
-### Render Environment variables
+This package removes that custom `DataSourceConfig` and adds the Appraisal-style `DatasourceEnvironmentPostProcessor`. Spring Boot's standard Hikari datasource auto-configuration now reads:
 
-In Render → your **backend Web Service** → Environment, set:
+- `SPRING_DATASOURCE_URL`
+- `SPRING_DATASOURCE_USERNAME`
+- `SPRING_DATASOURCE_PASSWORD`
 
-- `DB_URL`: exact JDBC URL from your database provider. For Aiven MySQL, use the provider's JDBC format:
-  `jdbc:mysql://YOUR-HOST:YOUR-PORT/YOUR-DATABASE?sslMode=REQUIRED`
-- `DB_USERNAME`: exact database username shown by Aiven (often `avnadmin`, not `root`)
-- `DB_PASSWORD`: database password
-- `JPA_DDL_AUTO`: `update`
-- `APP_ALLOWED_ORIGINS`: `http://localhost:5173,https://YOUR-FRONTEND.vercel.app`
-- `APP_PUBLIC_BASE_URL`: `https://YOUR-BACKEND.onrender.com`
-- `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`: set only after rotating the exposed Google App Password.
+The post-processor:
+- Accepts a `mysql://user:password@host:port/database?...` Aiven URL and converts it to JDBC.
+- Extracts credentials from a URL if separate username/password variables are not set.
+- Normalizes quotes/whitespace.
+- Converts `ssl-mode` to Connector/J `sslMode`.
+- Adds `sslMode=REQUIRED` for remote MySQL URLs if no SSL option is present.
+- Fails clearly if Render is configured with localhost.
 
-Do not add quotes around environment variable values. Do not use `localhost` or `127.0.0.1` for a hosted Aiven database. Do not use the Aiven console/web URL. Copy the host, port, database name, username, and JDBC URL from Aiven → your MySQL service → Connection Information.
+## Render environment
 
-### Aiven network access
+In Render → Offer Letter backend Web Service → Environment, set these exact names:
 
-In Aiven, verify the MySQL service is running and that its allowed IP/network access includes the Render outbound source. If your Aiven plan supports public access, ensure it is enabled. If Aiven requires an IP allowlist and Render's outbound IPs are not allowed, the connection will fail. Check Render's outbound IP information for the service/region and configure the Aiven allowlist accordingly, or use a database networking option supported by both providers.
+| Variable | Value |
+|---|---|
+| `SPRING_DATASOURCE_URL` | Full Aiven JDBC URL or Aiven `mysql://...` connection URL |
+| `SPRING_DATASOURCE_USERNAME` | Aiven MySQL username |
+| `SPRING_DATASOURCE_PASSWORD` | Aiven MySQL password |
+| `JPA_DDL_AUTO` | `update` |
+| `APP_ALLOWED_ORIGINS` | `http://localhost:5173,https://YOUR-VERCEL-DOMAIN` |
+| `APP_PUBLIC_BASE_URL` | `https://YOUR-RENDER-BACKEND.onrender.com` |
+| `MAIL_USERNAME` | Gmail address |
+| `MAIL_PASSWORD` | New Google App Password |
+| `MAIL_FROM` | Gmail address |
 
-### After updating variables
+For the URL, best practice is to copy the JDBC URL from Aiven's Connection Information. It should look like:
 
-1. Save changes in Render.
-2. Trigger **Manual Deploy → Deploy latest commit** (or wait for auto-deploy).
-3. Inspect the new logs. The datasource should log only a masked host/URL, never the password.
-4. Test `https://YOUR-BACKEND.onrender.com/api/health`.
+`jdbc:mysql://YOUR-HOST:YOUR-PORT/YOUR-DATABASE?sslMode=REQUIRED`
 
-The `/api/health` endpoint queries the database, so it only returns healthy when the database is reachable.
+If using Aiven's `mysql://username:password@host:port/database?ssl-mode=REQUIRED` URI, the included processor converts it. Do not add quotes around values.
+
+## Aiven checklist
+
+1. Confirm the MySQL service is Running.
+2. Copy the hostname, port, database name and username from the correct Aiven service.
+3. Ensure public access is enabled if Render connects over the internet.
+4. Ensure Aiven's IP allowlist/firewall permits Render's outbound traffic. Use the current outbound IP information for your Render service/region; do not guess.
+5. Confirm the user has privileges on the database.
+
+## Deploy
+
+1. Replace the Offer Letter backend source with this package (keep the folder structure).
+2. Commit and push to the configured GitHub repository.
+3. In Render, confirm the Environment variables above are set.
+4. Select Manual Deploy → Deploy latest commit.
+5. Inspect the *new deployment's* logs. If the same `Communications link failure` persists, the URL or database network access is still wrong; Java code cannot repair an unreachable host or blocked port.
 
 ## Local run (Windows CMD)
 
-From the folder containing `pom.xml`:
-
 ```cmd
-set DB_URL=jdbc:mysql://localhost:3306/offerletter_db
-set DB_USERNAME=root
-set DB_PASSWORD=YOUR_LOCAL_MYSQL_PASSWORD
-set MAIL_USERNAME=YOUR_GMAIL_ADDRESS
-set MAIL_PASSWORD=YOUR_NEW_GOOGLE_APP_PASSWORD
-set MAIL_FROM=YOUR_GMAIL_ADDRESS
+set SPRING_DATASOURCE_URL=jdbc:mysql://localhost:3306/offerletter_db
+set SPRING_DATASOURCE_USERNAME=root
+set SPRING_DATASOURCE_PASSWORD=YOUR_LOCAL_MYSQL_PASSWORD
 mvn clean spring-boot:run
 ```
 
-## Important SMTP note
+## Email and PDF notes
 
-This project retains Gmail SMTP on port 587. Render Free may restrict outbound SMTP. If email sending times out on Render Free, that is a hosting-network restriction; use a host/provider that permits SMTP or an HTTPS email API.
-
-## PDF storage note
-
-`uploads/` is local container storage. Render filesystems are ephemeral unless a persistent disk is attached. Use persistent storage or object storage if saved PDFs must survive restarts/redeploys.
+- Gmail SMTP remains implemented using Spring JavaMailSender. Render Free may block outbound SMTP port 587; this is separate from the MySQL startup failure.
+- Render local filesystem is ephemeral unless a persistent disk is attached. Uploaded files under `uploads/` may not survive restarts/redeploys.
 
 ## Build
 
@@ -62,4 +78,4 @@ This project retains Gmail SMTP on port 587. Render Free may restrict outbound S
 mvn clean package
 ```
 
-No credentials or Git history are included in this ZIP.
+This ZIP excludes `.git` history, build output, and hardcoded credentials. The React/Vite frontend is not included.
