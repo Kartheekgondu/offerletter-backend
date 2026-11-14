@@ -1,50 +1,64 @@
-# Offer Letter Backend — Gmail SMTP (Appraisal-style)
+# Offer Letter Backend
 
-This backend uses Spring Boot `JavaMailSender` and Gmail SMTP.
+Spring Boot 3.4.5 backend for the Offer Letter application. This project uses MySQL through a configurable HikariCP data source and Gmail SMTP through Spring `JavaMailSender`.
 
 ## Configuration
 
-Set these environment variables in the environment where Spring Boot runs:
+No passwords or API keys are stored in `application.properties`. Configure these environment variables where the backend runs:
 
-- `MAIL_HOST` — defaults to `smtp.gmail.com`
-- `MAIL_PORT` — defaults to `587`
-- `MAIL_USERNAME` — Gmail account address
-- `MAIL_PASSWORD` — Google App Password (not the normal Gmail password)
-- `MAIL_FROM` — sender address; defaults to `MAIL_USERNAME`
-- `DB_URL` — JDBC URL, e.g. `jdbc:mysql://localhost:3306/offerletter_db`
-- `DB_USERNAME` — database username
-- `DB_PASSWORD` — database password
-- `APP_ALLOWED_ORIGINS` — comma-separated frontend origins
-- `APP_PUBLIC_BASE_URL` — public backend URL
-- `UPLOAD_DIR` — PDF storage directory
+| Variable | Purpose |
+|---|---|
+| `DB_URL` | JDBC URL, e.g. `jdbc:mysql://HOST:3306/DBNAME?sslMode=REQUIRED` |
+| `DB_USERNAME` | MySQL username |
+| `DB_PASSWORD` | MySQL password |
+| `JPA_DDL_AUTO` | Hibernate schema mode; defaults to `update` |
+| `MAIL_HOST` | SMTP host; defaults to `smtp.gmail.com` |
+| `MAIL_PORT` | SMTP port; defaults to `587` |
+| `MAIL_USERNAME` | Gmail account address |
+| `MAIL_PASSWORD` | Google App Password (not the normal Gmail password) |
+| `MAIL_FROM` | Sender address; defaults to `MAIL_USERNAME` |
+| `APP_ALLOWED_ORIGINS` | Comma-separated frontend origins |
+| `APP_PUBLIC_BASE_URL` | Public backend base URL |
+| `UPLOAD_DIR` | Directory for uploaded PDF files |
+| `APP_API_KEY` | Optional API key; blank disables API-key validation |
+| `PORT` | Hosting platform port; defaults to `9091` |
 
-No credentials are stored in `application.properties`.
+## Local run on Windows CMD
 
-## Windows CMD local run
-
-Run these commands in the same CMD window used to start the backend:
+Open CMD in the folder containing `pom.xml`, then set your local values in that CMD window:
 
 ```cmd
-set MAIL_HOST=smtp.gmail.com
-set MAIL_PORT=587
-set MAIL_USERNAME=your-gmail-address
-set MAIL_PASSWORD=your-16-character-google-app-password
-set MAIL_FROM=your-gmail-address
 set DB_URL=jdbc:mysql://localhost:3306/offerletter_db
 set DB_USERNAME=root
-set DB_PASSWORD=your-local-mysql-password
+set DB_PASSWORD=YOUR_LOCAL_MYSQL_PASSWORD
+set MAIL_HOST=smtp.gmail.com
+set MAIL_PORT=587
+set MAIL_USERNAME=YOUR_GMAIL_ADDRESS
+set MAIL_PASSWORD=YOUR_GOOGLE_APP_PASSWORD
+set MAIL_FROM=YOUR_GMAIL_ADDRESS
+set APP_ALLOWED_ORIGINS=http://localhost:5173,https://offerletter-frontend.vercel.app
+set APP_PUBLIC_BASE_URL=http://localhost:9091
 mvn clean spring-boot:run
 ```
 
-Use a Google App Password with 2-Step Verification enabled. Never commit it to Git.
+Use a Google App Password with 2-Step Verification enabled. Do not paste credentials into source files or commit them to Git.
 
-## Email behavior
+## API endpoints
 
-`OfferLetterService.send(...)` validates the recipient and PDF, creates a MIME message, attaches the generated PDF, and sends it using `JavaMailSender`. The API returns success only after `mailSender.send(...)` completes.
+- `GET /api/health` — backend/database health check
+- `POST /api/save-offer` — save offer details and PDF
+- `POST /api/send-offer` — email the PDF attachment
+- `GET /api/offers` — list saved offers
+- `GET /api/offers/{id}` — retrieve an offer
+- `GET /api/search-offers?name=...` — search offers
 
-## Hosting note
+## Render deployment notes
 
-This implementation uses SMTP port 587. Confirm that your hosting provider permits outbound SMTP. Render Free may block SMTP egress; if so, this exact Gmail SMTP implementation will not work from that plan. Use an SMTP-capable host/plan or a supported HTTPS email provider.
+Set the database and mail environment variables in the Render service's Environment settings. Set `APP_ALLOWED_ORIGINS` to the exact deployed frontend origin and `APP_PUBLIC_BASE_URL` to the backend's public URL.
+
+**SMTP limitation:** this implementation sends mail over SMTP port 587. Render Free may restrict outbound SMTP connections, so Gmail SMTP can fail even when credentials are correct. If outbound SMTP is blocked, use an SMTP-capable hosting plan/provider or an HTTPS email API.
+
+**PDF persistence:** the default `uploads/` directory is local container storage. On hosts with ephemeral filesystems, uploaded PDFs may disappear after redeploy/restart. Use a persistent disk or object storage if PDFs must remain available.
 
 ## Build
 
@@ -52,4 +66,4 @@ This implementation uses SMTP port 587. Confirm that your hosting provider permi
 mvn clean package
 ```
 
-The ZIP intentionally excludes `.git`, IDE metadata, build output, and all credentials. Apply the corrected source files to your existing repository; do not replace your `.git` directory.
+The ZIP excludes Git history, IDE metadata, build output, uploaded files, and credentials. It contains the backend only; it does not contain the React/Vite frontend.

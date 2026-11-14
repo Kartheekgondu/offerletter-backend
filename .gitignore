@@ -1,4 +1,7 @@
 /target/
+/.env
 .env
-src/main/resources/application-local.properties
+.env.*
+!.env.example
 uploads/
+src/main/resources/application-local.properties
