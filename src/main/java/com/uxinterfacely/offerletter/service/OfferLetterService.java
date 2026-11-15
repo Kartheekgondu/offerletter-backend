@@ -145,6 +145,9 @@ public class OfferLetterService {
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
             helper.setTo(recipient);
+            if (emailFrom != null && !emailFrom.isBlank()) {
+                helper.setFrom(emailFrom.trim());
+            }
             helper.setSubject("Offer Letter - " + candidate);
             helper.setText(emailText);
 
@@ -163,10 +166,21 @@ public class OfferLetterService {
             return result;
 
         } catch (MessagingException | MailException exception) {
-            log.error("Unable to send offer letter email to {}. Check the configured Gmail SMTP settings.",
+            log.error("Unable to send offer letter email to {}. Check Gmail SMTP connectivity and credentials.",
                     recipient, exception);
+
+            Throwable rootCause = exception;
+            while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
+                rootCause = rootCause.getCause();
+            }
+            String detail = rootCause.getMessage();
+            if (detail == null || detail.isBlank()) {
+                detail = rootCause.getClass().getSimpleName();
+            }
+            // Include the low-level failure in the API response so the frontend
+            // can distinguish blocked SMTP networking from invalid credentials.
             throw new IllegalStateException(
-                    "Unable to send offer letter email. Check Gmail SMTP settings and Google App Password.",
+                    "Gmail SMTP delivery failed: " + detail,
                     exception
             );
         }
