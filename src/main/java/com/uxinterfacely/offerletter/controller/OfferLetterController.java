@@ -40,12 +40,14 @@ public class OfferLetterController {
     }
 
     // Appraisal-style route, plus backwards-compatible legacy route.
-    @GetMapping({"/offers/search", "/search-offers"})
+    @GetMapping({"/offers/search", "/search-offers", "/offer-letters/search"})
     public ResponseEntity<Map<String, Object>> search(
             @RequestParam(name = "q", required = false) String q,
-            @RequestParam(name = "name", required = false) String name) {
+            @RequestParam(name = "name", required = false) String name,
+            @RequestParam(name = "query", required = false) String query) {
         String term = (q != null && !q.isBlank()) ? q.trim()
-                : (name != null ? name.trim() : "");
+                : (name != null && !name.isBlank()) ? name.trim()
+                : (query != null ? query.trim() : "");
         return ResponseEntity.ok(service.search(term));
     }
 
@@ -53,7 +55,7 @@ public class OfferLetterController {
     public Map<String, Object> health() {
         Map<String, Object> result = new LinkedHashMap<>(service.health());
         result.put("apiVersion", "offerletter-search-v2");
-        result.put("searchRoutes", List.of("/api/offers/search?q=", "/api/search-offers?name="));
+        result.put("searchRoutes", List.of("/api/offers/search?q=", "/api/search-offers?name=", "/api/offer-letters/search?query="));
         return result;
     }
 }
