@@ -11,9 +11,7 @@ import java.util.*;
 public class OfferLetterController {
     private final OfferLetterService service;
 
-    public OfferLetterController(OfferLetterService service) {
-        this.service = service;
-    }
+    public OfferLetterController(OfferLetterService service) { this.service = service; }
 
     @PostMapping(value = "/save-offer", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> save(
@@ -29,8 +27,8 @@ public class OfferLetterController {
         return ResponseEntity.ok(service.send(fields, pdf));
     }
 
-    // Main history route plus compatibility aliases for older frontend deployments.
-    @GetMapping({"/offers", "/offer-letters", "/offerletters"})
+    // Read existing records from the same offer_sends table used by earlier deployments.
+    @GetMapping({"/offers", "/offer-letters", "/offerletters", "/offer-sends"})
     public ResponseEntity<Map<String, Object>> listRecent() {
         return ResponseEntity.ok(service.listRecent());
     }
@@ -40,33 +38,26 @@ public class OfferLetterController {
         return ResponseEntity.ok(service.getOffer(id));
     }
 
-    // Appraisal-style search route and aliases. Supports q, name and query parameters.
+    // Same search convention as the Appraisal backend: GET /api/.../search?q=...
     @GetMapping({
-        "/offers/search",
-        "/search-offers",
-        "/offer-letters/search",
-        "/offerletters/search"
+        "/offers/search", "/offer-letters/search", "/offerletters/search", "/search-offers"
     })
     public ResponseEntity<Map<String, Object>> search(
             @RequestParam(name = "q", required = false) String q,
             @RequestParam(name = "name", required = false) String name,
             @RequestParam(name = "query", required = false) String query) {
-        String term = (q != null && !q.isBlank()) ? q.trim()
-                : (name != null && !name.isBlank()) ? name.trim()
-                : (query != null ? query.trim() : "");
+        String term = q != null && !q.isBlank() ? q.trim()
+                : name != null && !name.isBlank() ? name.trim()
+                : query != null ? query.trim() : "";
         return ResponseEntity.ok(term.isBlank() ? service.listRecent() : service.search(term));
     }
 
     @GetMapping("/health")
     public Map<String, Object> health() {
         Map<String, Object> result = new LinkedHashMap<>(service.health());
-        result.put("apiVersion", "offerletter-history-v3");
-        result.put("historyRoutes", List.of(
-                "/api/offers",
-                "/api/offers/search?q=",
-                "/api/offer-letters",
-                "/api/offer-letters/search?q="
-        ));
+        result.put("apiVersion", "offerletter-history-v4");
+        result.put("historyApi", "/api/offers");
+        result.put("searchApi", "/api/offers/search?q=");
         return result;
     }
 }
