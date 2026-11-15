@@ -23,7 +23,9 @@ import java.time.LocalDate;
 import java.util.*;
 
 @Service
-public class OfferLetterService {\n\n    private static final Logger log = LoggerFactory.getLogger(OfferLetterService.class);
+public class OfferLetterService {
+
+    private static final Logger log = LoggerFactory.getLogger(OfferLetterService.class);
 
     private final OfferSendRepository repository;
     private final FileStorageService storage;
