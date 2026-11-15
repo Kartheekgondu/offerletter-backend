@@ -16,14 +16,6 @@ public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
-    @ExceptionHandler(com.uxinterfacely.offerletter.service.EmailDeliveryException.class)
-    public ResponseEntity<Map<String, String>> emailUnavailable(
-            com.uxinterfacely.offerletter.service.EmailDeliveryException ex) {
-        log.error("Offer-letter email service unavailable: {}", ex.getMessage(), ex);
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(Map.of("error", safe(ex.getMessage())));
-    }
-
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(Map.of("error", safe(ex.getMessage())));

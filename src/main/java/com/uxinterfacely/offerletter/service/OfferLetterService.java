@@ -118,7 +118,8 @@ public class OfferLetterService {
         String doj = value(f, "dojDisplay", "");
 
         if (pdf == null || pdf.isEmpty()) {
-            throw new IllegalArgumentException("Offer letter PDF attachment is missing. Generate the letter again.");
+            throw new IllegalArgumentException(
+                    "Generated offer letter PDF is missing. Generate the letter again and retry.");
         }
         if (pdf.getSize() > 25L * 1024 * 1024) {
             throw new IllegalArgumentException("Offer letter PDF must be 25 MB or smaller.");
@@ -130,22 +131,6 @@ public class OfferLetterService {
             throw new IllegalArgumentException("The attachment is not a valid PDF. Generate the offer letter again.");
         }
 
-        // Same Spring JavaMailSender pattern used by the supplied Appraisal email service.
-        if (mailUsername == null || mailUsername.isBlank()
-                || mailPassword == null || mailPassword.isBlank()) {
-            throw new EmailDeliveryException(
-                    "Email service is not configured. Add MAIL_USERNAME and MAIL_PASSWORD (Google App Password) to Render.");
-        }
-
-        String fromAddress = (emailFrom == null || emailFrom.isBlank())
-                ? mailUsername.trim()
-                : emailFrom.trim();
-
-        if (!fromAddress.equalsIgnoreCase(mailUsername.trim())) {
-            throw new EmailDeliveryException(
-                    "MAIL_FROM must match MAIL_USERNAME, unless it is a verified Gmail send-as alias.");
-        }
-
         String safeCandidate = candidate.replaceAll("[^A-Za-z0-9_-]", "_");
         String emailText = "Dear " + candidate + ",\n\n"
                 + "Please find attached your offer letter for " + role
@@ -154,16 +139,20 @@ public class OfferLetterService {
                 + ".\n\nRegards,\nHR Department\nUXINTERFACELY IT SOLUTIONS LLP";
 
         try {
+            // Same flow as AppraisalEmailService: create MIME message, add PDF,
+            // and send through Spring Boot's configured JavaMailSender.
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
             helper.setTo(recipient);
-            helper.setFrom(fromAddress);
             helper.setSubject("Offer Letter - " + candidate);
-            helper.setText(emailText, false);
+            helper.setText(emailText);
+
             helper.addAttachment(
                     safeCandidate + "_Offer_Letter.pdf",
                     new ByteArrayResource(pdfBytes),
-                    "application/pdf");
+                    "application/pdf"
+            );
 
             mailSender.send(message);
 
@@ -171,18 +160,15 @@ public class OfferLetterService {
             result.put("success", true);
             result.put("message", "Offer letter email sent successfully.");
             result.put("recipient", recipient);
-            result.put("provider", "Gmail SMTP");
             return result;
 
-        } catch (MessagingException | MailException ex) {
-            log.error(
-                    "Gmail SMTP delivery failed for recipient {}. Check Render MAIL_HOST, MAIL_PORT, "
-                    + "MAIL_USERNAME, MAIL_PASSWORD, MAIL_FROM and SMTP network access.",
-                    recipient,
-                    ex);
-            throw new EmailDeliveryException(
-                    "Gmail could not send the offer letter. Verify Render SMTP settings and the Google App Password, then check Render logs for the exact SMTP response.",
-                    ex);
+        } catch (MessagingException | MailException exception) {
+            log.error("Unable to send offer letter email to {}. Check the configured Gmail SMTP settings.",
+                    recipient, exception);
+            throw new IllegalStateException(
+                    "Unable to send offer letter email. Check Gmail SMTP settings and Google App Password.",
+                    exception
+            );
         }
     }
 
