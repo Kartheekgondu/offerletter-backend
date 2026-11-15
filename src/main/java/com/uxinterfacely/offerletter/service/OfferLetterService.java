@@ -31,14 +31,8 @@ public class OfferLetterService {
     private final FileStorageService storage;
     private final JavaMailSender mailSender;
 
-    @Value("${app.email.from:}")
-    private String emailFrom;
 
-    @Value("${spring.mail.username:}")
-    private String mailUsername;
 
-    @Value("${spring.mail.password:}")
-    private String mailPassword;
 
     @Value("${app.public-base-url:http://localhost:9091}")
     private String publicBaseUrl;
@@ -145,9 +139,6 @@ public class OfferLetterService {
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
             helper.setTo(recipient);
-            if (emailFrom != null && !emailFrom.isBlank()) {
-                helper.setFrom(emailFrom.trim());
-            }
             helper.setSubject("Offer Letter - " + candidate);
             helper.setText(emailText);
 
@@ -180,7 +171,7 @@ public class OfferLetterService {
             // Include the low-level failure in the API response so the frontend
             // can distinguish blocked SMTP networking from invalid credentials.
             throw new IllegalStateException(
-                    "Gmail SMTP delivery failed: " + detail,
+                    "Gmail SMTP delivery failed: " + detail + ". If this is a Render Free web service, outbound port 587 is blocked; use the same paid Render instance type as the working Appraisal backend or use an SMTP relay on port 2525.",
                     exception
             );
         }
