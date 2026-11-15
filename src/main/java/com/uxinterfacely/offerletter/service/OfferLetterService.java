@@ -6,6 +6,8 @@ import com.uxinterfacely.offerletter.repository.OfferSendRepository;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -21,7 +23,7 @@ import java.time.LocalDate;
 import java.util.*;
 
 @Service
-public class OfferLetterService {
+public class OfferLetterService {\n\n    private static final Logger log = LoggerFactory.getLogger(OfferLetterService.class);
 
     private final OfferSendRepository repository;
     private final FileStorageService storage;
@@ -162,8 +164,13 @@ public class OfferLetterService {
             return result;
 
         } catch (MessagingException | MailException ex) {
+            // Keep SMTP diagnostics in the Render logs; never return credentials to the browser.
+            log.error("Offer-letter email delivery failed for recipient {}. Check MAIL_HOST, MAIL_PORT, "
+                    + "MAIL_USERNAME, MAIL_PASSWORD (Google App Password), MAIL_FROM and outbound SMTP access.",
+                    recipient, ex);
             throw new IllegalStateException(
-                    "Unable to send offer letter email. Check Gmail SMTP settings and Google App Password.", ex);
+                    "Unable to send offer letter email. Verify the backend Gmail SMTP environment variables "
+                    + "and Google App Password. Check the backend logs for the SMTP failure reason.", ex);
         }
     }
 
