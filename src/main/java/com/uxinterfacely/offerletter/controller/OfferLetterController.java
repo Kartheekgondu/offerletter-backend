@@ -29,18 +29,24 @@ public class OfferLetterController {
         return ResponseEntity.ok(service.send(fields, pdf));
     }
 
-    @GetMapping("/offers")
+    // Main history route plus compatibility aliases for older frontend deployments.
+    @GetMapping({"/offers", "/offer-letters", "/offerletters"})
     public ResponseEntity<Map<String, Object>> listRecent() {
         return ResponseEntity.ok(service.listRecent());
     }
 
-    @GetMapping("/offers/{id}")
+    @GetMapping({"/offers/{id}", "/offer-letters/{id}", "/offerletters/{id}"})
     public ResponseEntity<Map<String, Object>> getOffer(@PathVariable Long id) {
         return ResponseEntity.ok(service.getOffer(id));
     }
 
-    // Appraisal-style route, plus backwards-compatible legacy route.
-    @GetMapping({"/offers/search", "/search-offers", "/offer-letters/search"})
+    // Appraisal-style search route and aliases. Supports q, name and query parameters.
+    @GetMapping({
+        "/offers/search",
+        "/search-offers",
+        "/offer-letters/search",
+        "/offerletters/search"
+    })
     public ResponseEntity<Map<String, Object>> search(
             @RequestParam(name = "q", required = false) String q,
             @RequestParam(name = "name", required = false) String name,
@@ -48,14 +54,19 @@ public class OfferLetterController {
         String term = (q != null && !q.isBlank()) ? q.trim()
                 : (name != null && !name.isBlank()) ? name.trim()
                 : (query != null ? query.trim() : "");
-        return ResponseEntity.ok(service.search(term));
+        return ResponseEntity.ok(term.isBlank() ? service.listRecent() : service.search(term));
     }
 
     @GetMapping("/health")
     public Map<String, Object> health() {
         Map<String, Object> result = new LinkedHashMap<>(service.health());
-        result.put("apiVersion", "offerletter-search-v2");
-        result.put("searchRoutes", List.of("/api/offers/search?q=", "/api/search-offers?name=", "/api/offer-letters/search?query="));
+        result.put("apiVersion", "offerletter-history-v3");
+        result.put("historyRoutes", List.of(
+                "/api/offers",
+                "/api/offers/search?q=",
+                "/api/offer-letters",
+                "/api/offer-letters/search?q="
+        ));
         return result;
     }
 }
